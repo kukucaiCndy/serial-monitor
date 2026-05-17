@@ -81,7 +81,8 @@ void SettingsDialog::loadFromConfig()
     bufferSizeSpin_->setValue(cfg.display.bufferSize);
     timestampCheck_->setChecked(cfg.display.showTimestamp);
     autoScrollCheck_->setChecked(cfg.display.autoScroll);
-    autoReconnectCheck_->setChecked(true);
+    autoReconnectCheck_->setChecked(cfg.display.autoReconnect);
+    ipcNameEdit_->setText(cfg.ipcName);
 }
 
 void SettingsDialog::saveToConfig()
@@ -92,5 +93,7 @@ void SettingsDialog::saveToConfig()
     cfg.display.bufferSize = bufferSizeSpin_->value();
     cfg.display.showTimestamp = timestampCheck_->isChecked();
     cfg.display.autoScroll = autoScrollCheck_->isChecked();
+    cfg.display.autoReconnect = autoReconnectCheck_->isChecked();
+    cfg.ipcName = ipcNameEdit_->text();
     ConfigManager::instance().save();
 }

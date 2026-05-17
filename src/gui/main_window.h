@@ -11,6 +11,9 @@
 #include <QPushButton>
 #include <QListWidget>
 #include <QSerialPortInfo>
+#include <QTimer>
+#include <QElapsedTimer>
+#include <QMap>
 #include "serial_tab_widget.h"
 #include "log_view.h"
 #include "send_panel.h"
@@ -24,6 +27,14 @@ class MainWindow : public QMainWindow {
 public:
     explicit MainWindow(QWidget* parent = nullptr);
     ~MainWindow();
+
+private:
+    struct PendingConnectRequest {
+        QString clientId;
+        QString requestId;
+        QString port;
+        int baudrate;
+    };
 
 private slots:
     void onConnectOrDisconnect();
@@ -57,7 +68,9 @@ private:
     QListWidget* portList_;
     QComboBox* portCombo_;
     QComboBox* baudCombo_;
-    QComboBox* paramsCombo_;
+    QComboBox* dataBitsCombo_;
+    QComboBox* parityCombo_;
+    QComboBox* stopBitsCombo_;
     QPushButton* connectBtn_;
 
     SerialTabWidget* tabWidget_;
@@ -72,6 +85,10 @@ private:
     StatusBar* statusBar_;
     IPCServer* ipcServer_;
     LogBuffer* logBuffer_;
+    QTimer* statusTimer_;
+    QElapsedTimer connectionTimer_;
+    bool connectionTimerRunning_;
+    QMap<QString, PendingConnectRequest> pendingConnects_;
 
     qint64 rxBytes_;
     qint64 txBytes_;

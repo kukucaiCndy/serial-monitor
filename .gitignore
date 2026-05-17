@@ -34,6 +34,9 @@ env/
 # Logs
 *.log
 
+# Deploy artifacts (DLLs + exes copied by deploy.sh)
+deploy/emberInter/
+
 # C++ Build
 build*/
 .vscode/

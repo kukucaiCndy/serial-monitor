@@ -53,30 +53,34 @@ CLIApp::CLIApp(const QString& ipcName)
 
 int CLIApp::run(int argc, char* argv[])
 {
+    spdlog::set_level(spdlog::level::off);
+
     QCoreApplication app(argc, argv);
     app_ = &app;
-    app.setApplicationName("serial-monitor-cli");
+    app.setApplicationName("emberInter-cli");
     app.setApplicationVersion("2.0.0");
 
     QCommandLineParser parser;
-    parser.setApplicationDescription("EmberIntel Serial Monitor - CLI Client");
+    parser.setApplicationDescription("emberInter 尘智串口调试工具 - CLI Client");
     parser.addHelpOption();
     parser.addVersionOption();
 
-    parser.addOption(QCommandLineOption("p", "Port name", "PORT"));
-    parser.addOption(QCommandLineOption("b", "Baud rate (default: 115200)", "RATE", "115200"));
-    parser.addOption(QCommandLineOption("f", "Filter keyword", "KEYWORD"));
-    parser.addOption(QCommandLineOption("o", "Save logs to file", "FILE"));
-    parser.addOption(QCommandLineOption("hex", "HEX display mode"));
-    parser.addOption(QCommandLineOption("no-timestamp", "Disable timestamps"));
-    parser.addOption(QCommandLineOption("clear", "Clear logs on start"));
-    parser.addOption(QCommandLineOption("list", "List available serial ports"));
-    parser.addOption(QCommandLineOption("cli", "Interactive CLI mode"));
-    parser.addOption(QCommandLineOption("json", "JSON output mode"));
-    parser.addOption(QCommandLineOption("ipc", "IPC server name", "NAME", "serial_monitor_ipc"));
-    parser.addOption(QCommandLineOption("send", "Send data and exit", "DATA"));
-    parser.addOption(QCommandLineOption("get-logs", "Get recent log count", "COUNT"));
-    parser.addOption(QCommandLineOption("get-status", "Get connection status"));
+    parser.addOption(QCommandLineOption("p", "串口名称", "PORT"));
+    parser.addOption(QCommandLineOption("b", "波特率 (默认: 115200)", "RATE", "115200"));
+    parser.addOption(QCommandLineOption("f", "过滤关键词", "KEYWORD"));
+    parser.addOption(QCommandLineOption("o", "保存日志到文件", "FILE"));
+    parser.addOption(QCommandLineOption("hex", "HEX显示模式"));
+    parser.addOption(QCommandLineOption("no-timestamp", "不显示时间戳"));
+    parser.addOption(QCommandLineOption("clear", "启动时清空日志"));
+    parser.addOption(QCommandLineOption("list", "列出可用串口"));
+    parser.addOption(QCommandLineOption("cli", "交互CLI模式"));
+    parser.addOption(QCommandLineOption("json", "JSON输出模式"));
+    parser.addOption(QCommandLineOption("ipc", "IPC服务名", "NAME", "serial_monitor_ipc"));
+    parser.addOption(QCommandLineOption("send", "发送数据后退出", "DATA"));
+    parser.addOption(QCommandLineOption("connect", "连接串口", "PORT"));
+    parser.addOption(QCommandLineOption("baudrate", "--connect的波特率", "RATE", "115200"));
+    parser.addOption(QCommandLineOption("get-logs", "获取最近N条日志", "COUNT"));
+    parser.addOption(QCommandLineOption("get-status", "获取连接状态"));
 
     parser.process(app);
 
@@ -89,8 +93,8 @@ int CLIApp::run(int argc, char* argv[])
 
     if (!ipc_->connectToServer(ipcName_)) {
         QTextStream err(stderr);
-        err << "Error: GUI service not running (IPC: " << ipcName_ << ")" << Qt::endl;
-        err << "Please start serial-monitor.exe first" << Qt::endl;
+        err << "错误: GUI 服务未运行 (IPC: " << ipcName_ << ")" << Qt::endl;
+        err << "请先启动 GUI 程序" << Qt::endl;
         return 2;
     }
 
@@ -126,14 +130,32 @@ int CLIApp::run(int argc, char* argv[])
     }
 
     else if (parser.isSet("send")) {
-        Q_UNUSED(parser);
+        QString data = parser.value("send");
+        QJsonObject params;
+        params["data"] = data;
+        params["port"] = parser.value("p");
+        params["append"] = "CRLF";
+        QString reqId = nextReqId();
+        addPending();
+        ipc_->sendCommand("send_text", params, reqId);
+    }
+
+    else if (parser.isSet("connect")) {
+        QString port = parser.value("connect");
+        int baud = parser.value("baudrate").toInt();
+        QJsonObject params;
+        params["port"] = port;
+        params["baudrate"] = baud;
+        QString reqId = nextReqId();
+        addPending();
+        ipc_->sendCommand("connect", params, reqId);
     }
 
     else if (parser.isSet("cli")) {
         QString port = parser.value("p");
         if (port.isEmpty()) {
             QTextStream out(stdout);
-            out << "Error: --cli requires --port" << Qt::endl;
+            out << "错误: --cli 需要 --port 参数" << Qt::endl;
             return 1;
         }
         QTimer::singleShot(0, [this, port]() { runInteractive(port); });
@@ -144,12 +166,12 @@ int CLIApp::run(int argc, char* argv[])
         interactiveMode_ = true;
         QTimer::singleShot(0, [this]() {
             QTextStream out(stdout);
-            out << COLOR_GREEN << "[SYSTEM] Monitoring serial logs. Press Ctrl+C to stop."
+            out << COLOR_GREEN << "[系统] 正在监听串口日志，按 Ctrl+C 停止。"
                 << COLOR_RESET << Qt::endl;
         });
         QObject::connect(&app, &QCoreApplication::aboutToQuit, [this]() {
             QTextStream out(stdout);
-            out << COLOR_GRAY << "[SYSTEM] CLI disconnected (GUI service continues)"
+            out << COLOR_GRAY << "[系统] CLI 已断开 (GUI 服务继续运行)"
                 << COLOR_RESET << Qt::endl;
         });
         return app.exec();
@@ -188,16 +210,16 @@ int CLIApp::runInteractive(const QString& port)
 
     QTextStream out(stdout);
     out << COLOR_CYAN << QString(60, '=') << COLOR_RESET << Qt::endl;
-    out << COLOR_CYAN << "  EmberIntel Serial Monitor CLI" << COLOR_RESET << Qt::endl;
+    out << COLOR_CYAN << "  emberInter 尘智串口调试工具 CLI" << COLOR_RESET << Qt::endl;
     out << COLOR_GRAY << "  Port: " << port << COLOR_RESET << Qt::endl;
     out << COLOR_CYAN << QString(60, '=') << COLOR_RESET << Qt::endl;
     out << Qt::endl;
-    out << COLOR_GREEN << "[SYSTEM] Type 'help' for commands, 'quit' to exit"
+    out << COLOR_GREEN << "[系统] 输入 'help' 查看命令, 'quit' 退出"
         << COLOR_RESET << Qt::endl << Qt::endl;
 
     QTextStream in(stdin);
     while (true) {
-        out << "> " << flush;
+        out << "> " << Qt::flush;
         QString cmd = in.readLine().trimmed();
         if (cmd.isEmpty()) continue;
         if (cmd == "q" || cmd == "quit" || cmd == "exit") break;
@@ -219,7 +241,7 @@ void CLIApp::handleCommand(const QString& cmd)
     }
     if (cmd == "c" || cmd == "clear") {
         ipc_->sendCommand("clear_logs");
-        out << COLOR_GREEN << "[SYSTEM] Logs cleared" << COLOR_RESET << Qt::endl;
+        out << COLOR_GREEN << "[系统] 日志已清空" << COLOR_RESET << Qt::endl;
         return;
     }
     if (cmd == "s" || cmd == "status") {
@@ -232,18 +254,18 @@ void CLIApp::handleCommand(const QString& cmd)
     }
     if (cmd == "hex") {
         hexMode_ = true;
-        out << COLOR_GREEN << "[SYSTEM] HEX mode on" << COLOR_RESET << Qt::endl;
+        out << COLOR_GREEN << "[系统] HEX 模式已开启" << COLOR_RESET << Qt::endl;
         return;
     }
     if (cmd == "text") {
         hexMode_ = false;
-        out << COLOR_GREEN << "[SYSTEM] Text mode on" << COLOR_RESET << Qt::endl;
+        out << COLOR_GREEN << "[系统] 文本模式已开启" << COLOR_RESET << Qt::endl;
         return;
     }
     if (cmd == "ts" || cmd == "timestamp") {
         showTimestamp_ = !showTimestamp_;
-        out << COLOR_GREEN << "[SYSTEM] Timestamp: "
-            << (showTimestamp_ ? "ON" : "OFF") << COLOR_RESET << Qt::endl;
+        out << COLOR_GREEN << "[系统] 时间戳: "
+            << (showTimestamp_ ? "开" : "关") << COLOR_RESET << Qt::endl;
         return;
     }
     if (cmd.startsWith("send ")) {
@@ -251,14 +273,14 @@ void CLIApp::handleCommand(const QString& cmd)
         params["data"] = cmd.mid(5);
         params["append"] = "CRLF";
         ipc_->sendCommand("send_text", params);
-        out << COLOR_GREEN << ">>> Sent: " << cmd.mid(5) << COLOR_RESET << Qt::endl;
+        out << COLOR_GREEN << ">>> 发送: " << cmd.mid(5) << COLOR_RESET << Qt::endl;
         return;
     }
     if (cmd.startsWith("sendhex ")) {
         QJsonObject params;
         params["data"] = cmd.mid(8);
         ipc_->sendCommand("send_hex", params);
-        out << COLOR_GREEN << ">>> HEX Sent: " << cmd.mid(8) << COLOR_RESET << Qt::endl;
+        out << COLOR_GREEN << ">>> HEX 发送: " << cmd.mid(8) << COLOR_RESET << Qt::endl;
         return;
     }
     if (cmd.startsWith("filter ")) {
@@ -267,8 +289,8 @@ void CLIApp::handleCommand(const QString& cmd)
         QJsonObject params;
         params["keyword"] = kw;
         ipc_->sendCommand("set_filter", params);
-        out << COLOR_GREEN << "[SYSTEM] Filter: "
-            << (kw.isEmpty() ? "none" : kw) << COLOR_RESET << Qt::endl;
+        out << COLOR_GREEN << "[系统] 过滤: "
+            << (kw.isEmpty() ? "无" : kw) << COLOR_RESET << Qt::endl;
         return;
     }
     if (cmd.startsWith("export ")) {
@@ -276,7 +298,7 @@ void CLIApp::handleCommand(const QString& cmd)
         params["file_path"] = cmd.mid(7).trimmed();
         params["format"] = "json";
         ipc_->sendCommand("export_logs", params);
-        out << COLOR_GREEN << "[SYSTEM] Exporting..." << COLOR_RESET << Qt::endl;
+        out << COLOR_GREEN << "[系统] 正在导出..." << COLOR_RESET << Qt::endl;
         return;
     }
     if (cmd.startsWith("connect ")) {
@@ -292,7 +314,7 @@ void CLIApp::handleCommand(const QString& cmd)
     params["data"] = cmd;
     params["append"] = "CRLF";
     ipc_->sendCommand("send_text", params);
-    out << COLOR_GREEN << ">>> Sent: " << cmd << COLOR_RESET << Qt::endl;
+    out << COLOR_GREEN << ">>> 发送: " << cmd << COLOR_RESET << Qt::endl;
 }
 
 void CLIApp::onLogReceived(const QJsonObject& log)
@@ -345,8 +367,8 @@ void CLIApp::onStatusChanged(const QJsonObject& status)
         return;
     }
 
-    out << COLOR_GREEN << "[SYSTEM] " << port << " "
-        << (connected ? "connected" : "disconnected") << COLOR_RESET << Qt::endl;
+    out << COLOR_GREEN << "[系统] " << port << " "
+        << (connected ? "已连接" : "已断开") << COLOR_RESET << Qt::endl;
 }
 
 void CLIApp::onResponseReceived(const QString& id, bool success, const QJsonObject& data)
@@ -359,7 +381,7 @@ void CLIApp::onResponseReceived(const QString& id, bool success, const QJsonObje
     if (data.contains("ports")) {
         QJsonArray ports = data["ports"].toArray();
         if (ports.isEmpty()) {
-            out << COLOR_GRAY << "[SYSTEM] No serial ports found" << COLOR_RESET << Qt::endl;
+            out << COLOR_GRAY << "[系统] 未找到串口设备" << COLOR_RESET << Qt::endl;
         } else {
             for (const auto& val : ports) {
                 QJsonObject p = val.toObject();
@@ -378,8 +400,8 @@ void CLIApp::onResponseReceived(const QString& id, bool success, const QJsonObje
         int returned = data["returned_count"].toInt();
         QJsonArray entries = data["entries"].toArray();
 
-        out << COLOR_GRAY << "[SYSTEM] Log buffer: " << total
-            << " entries, showing " << returned << COLOR_RESET << Qt::endl;
+        out << COLOR_GRAY << "[系统] 日志缓冲区: " << total
+            << " 条, 显示 " << returned << COLOR_RESET << Qt::endl;
 
         for (const auto& val : entries) {
             QJsonObject entry = val.toObject();
@@ -400,9 +422,9 @@ void CLIApp::onResponseReceived(const QString& id, bool success, const QJsonObje
     }
 
     if (data.contains("port") && !data.contains("entries")) {
-        out << COLOR_GREEN << "[SYSTEM] Port: " << data["port"].toString()
-            << " | Connected: " << (data["connected"].toBool() ? "yes" : "no")
-            << " | Buffer: " << data["buffer_size"].toInt()
+        out << COLOR_GREEN << "[系统] 串口: " << data["port"].toString()
+            << " | 连接: " << (data["connected"].toBool() ? "是" : "否")
+            << " | 缓冲: " << data["buffer_size"].toInt()
             << " | RX: " << data["rx_bytes"].toDouble()
             << " | TX: " << data["tx_bytes"].toDouble()
             << COLOR_RESET << Qt::endl;
@@ -419,36 +441,36 @@ void CLIApp::printHelp() const
 {
     QTextStream out(stdout);
     out << Qt::endl;
-    out << "Commands:" << Qt::endl;
-    out << "  q/quit/exit           - Quit CLI (GUI stays running)" << Qt::endl;
-    out << "  c/clear               - Clear log buffer" << Qt::endl;
-    out << "  s/status              - Show connection status" << Qt::endl;
-    out << "  list                  - List serial ports" << Qt::endl;
-    out << "  connect <port> [baud] - Connect serial port" << Qt::endl;
-    out << "  disc/disconnect       - Disconnect serial port" << Qt::endl;
-    out << "  send <data>           - Send text data" << Qt::endl;
-    out << "  sendhex <hex>         - Send HEX data" << Qt::endl;
-    out << "  filter <keyword>      - Set filter keyword" << Qt::endl;
-    out << "  hex / text            - Toggle display mode" << Qt::endl;
-    out << "  timestamp / ts        - Toggle timestamp" << Qt::endl;
-    out << "  export <file>         - Export to JSON" << Qt::endl;
-    out << "  help / ?              - Show this help" << Qt::endl;
+    out << "命令:" << Qt::endl;
+    out << "  q/quit/exit           - 退出CLI (GUI继续运行)" << Qt::endl;
+    out << "  c/clear               - 清空日志缓存" << Qt::endl;
+    out << "  s/status              - 显示连接状态" << Qt::endl;
+    out << "  list                  - 列出可用串口" << Qt::endl;
+    out << "  connect <port> [baud] - 连接串口" << Qt::endl;
+    out << "  disc/disconnect       - 断开串口" << Qt::endl;
+    out << "  send <data>           - 发送文本数据" << Qt::endl;
+    out << "  sendhex <hex>         - 发送HEX数据" << Qt::endl;
+    out << "  filter <keyword>      - 设置过滤关键词" << Qt::endl;
+    out << "  hex / text            - 切换显示模式" << Qt::endl;
+    out << "  timestamp / ts        - 切换时间戳" << Qt::endl;
+    out << "  export <file>         - 导出JSON日志" << Qt::endl;
+    out << "  help / ?              - 显示帮助" << Qt::endl;
     out << Qt::endl;
 }
 
 void CLIApp::printUsage() const
 {
     QTextStream out(stdout);
-    out << "Usage: serial-monitor-cli [options]" << Qt::endl;
-    out << "  -p, --port PORT       Serial port name" << Qt::endl;
-    out << "  --list                List serial ports" << Qt::endl;
-    out << "  --get-status          Show connection status" << Qt::endl;
-    out << "  --get-logs N          Get recent N log entries" << Qt::endl;
-    out << "  --json                JSON output mode" << Qt::endl;
-    out << "  --cli                 Interactive mode" << Qt::endl;
-    out << "  --hex                 HEX display mode" << Qt::endl;
-    out << "  -f, --filter KW       Filter keyword" << Qt::endl;
-    out << "  -o, --output FILE     Save to file" << Qt::endl;
-    out << "  --ipc NAME            IPC server name" << Qt::endl;
-    out << "  -h, --help            Show help" << Qt::endl;
+    out << "用法: emberInter-cli [选项]" << Qt::endl;
+    out << "  -p, --port PORT       串口名称" << Qt::endl;
+    out << "  --list                列出可用串口" << Qt::endl;
+    out << "  --get-status          显示连接状态" << Qt::endl;
+    out << "  --get-logs N          获取最近N条日志" << Qt::endl;
+    out << "  --json                JSON输出模式" << Qt::endl;
+    out << "  --cli                 交互模式" << Qt::endl;
+    out << "  --hex                 HEX显示模式" << Qt::endl;
+    out << "  -f, --filter KW       过滤关键词" << Qt::endl;
+    out << "  -o, --output FILE     保存到文件" << Qt::endl;
+    out << "  --ipc NAME            IPC服务名称" << Qt::endl;
+    out << "  -h, --help            显示帮助" << Qt::endl;
 }

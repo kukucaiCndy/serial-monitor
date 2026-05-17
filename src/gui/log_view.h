@@ -1,19 +1,18 @@
 #ifndef LOG_VIEW_H
 #define LOG_VIEW_H
 
-#include <QAbstractScrollArea>
+#include <QPlainTextEdit>
 #include <QVector>
-#include <QScrollBar>
 #include "log_buffer.h"
 
-class LogView : public QAbstractScrollArea {
+class LogView : public QPlainTextEdit {
     Q_OBJECT
 public:
     explicit LogView(QWidget* parent = nullptr);
 
     void appendEntry(const LogEntry& entry);
     void setEntries(const QVector<LogEntry>& entries);
-    void clear();
+    void clearLog();
     void setHexMode(bool enabled);
     void setShowTimestamp(bool enabled);
     void setAutoScroll(bool enabled);
@@ -28,21 +27,23 @@ public slots:
     void scrollToBottom();
 
 protected:
-    void paintEvent(QPaintEvent* event) override;
-    void resizeEvent(QResizeEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void contextMenuEvent(QContextMenuEvent* event) override;
 
 private:
     QVector<LogEntry> entries_;
     bool hexMode_;
     bool showTimestamp_;
     bool autoScroll_;
+    bool userScrolledUp_;
+    bool programmaticScroll_;
     QString filter_;
 
-    int lineHeight() const;
-    int visibleStartIndex() const;
-    int visibleEndIndex() const;
-    void updateScrollBar();
-    void drawLine(QPainter& painter, int index, int y);
+    void rebuildAll();
+    void renderEntry(const LogEntry& entry);
+    QString makeDisplayText(const LogEntry& entry) const;
+    QColor getLineColor(const QString& level) const;
+    QString colorToHtml(const QColor& color) const;
 };
 
 #endif

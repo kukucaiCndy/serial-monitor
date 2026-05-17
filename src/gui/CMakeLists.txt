@@ -37,6 +37,10 @@ target_link_libraries(serial-monitor PRIVATE
     Qt5::Network
 )
 
+if(WIN32)
+    target_link_libraries(serial-monitor PRIVATE dwmapi)
+endif()
+
 set_target_properties(serial-monitor PROPERTIES
     WIN32_EXECUTABLE TRUE
 )

@@ -1,75 +1,114 @@
 #include "log_view.h"
 #include "log_parser.h"
-#include <QPainter>
-#include <QPaintEvent>
+#include <QContextMenuEvent>
+#include <QMouseEvent>
+#include <QMenu>
 #include <QScrollBar>
-#include <QFontMetrics>
-#include <cmath>
+#include <QTextCursor>
+#include <QApplication>
+#include <QClipboard>
+#include <QMimeData>
+
+static const int MAX_DISPLAY_LINES = 50000;
 
 LogView::LogView(QWidget* parent)
-    : QAbstractScrollArea(parent)
+    : QPlainTextEdit(parent)
     , hexMode_(false)
     , showTimestamp_(true)
     , autoScroll_(true)
+    , userScrolledUp_(false)
+    , programmaticScroll_(false)
 {
-    verticalScrollBar()->setSingleStep(20);
+    setReadOnly(true);
+    setUndoRedoEnabled(false);
+    setMaximumBlockCount(MAX_DISPLAY_LINES);
     setFont(QFont("Consolas", 11));
+    setWordWrapMode(QTextOption::NoWrap);
+    setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     setMinimumHeight(200);
-    viewport()->setAutoFillBackground(true);
-    viewport()->setPalette(QPalette(Qt::white));
+
+    setStyleSheet(
+        "QPlainTextEdit {"
+        "  background-color: #0F172A;"
+        "  color: #E0E0E0;"
+        "  border: none;"
+        "  selection-background-color: #1E40AF;"
+        "  selection-color: #FFFFFF;"
+        "}"
+    );
+
+    connect(verticalScrollBar(), &QScrollBar::valueChanged, [this](int value) {
+        if (programmaticScroll_) return;
+        if (value < verticalScrollBar()->maximum()) {
+            userScrolledUp_ = true;
+        } else {
+            userScrolledUp_ = false;
+        }
+    });
 }
 
 void LogView::appendEntry(const LogEntry& entry)
 {
+    entries_.append(entry);
+
     if (!filter_.isEmpty() && !entry.text.contains(filter_, Qt::CaseInsensitive)) {
         return;
     }
-    entries_.append(entry);
-    updateScrollBar();
-    if (autoScroll_) {
-        scrollToBottom();
+
+    renderEntry(entry);
+
+    if (autoScroll_ && !userScrolledUp_) {
+        QScrollBar* vbar = verticalScrollBar();
+        programmaticScroll_ = true;
+        vbar->setValue(vbar->maximum());
+        programmaticScroll_ = false;
     }
-    viewport()->update();
 }
 
 void LogView::setEntries(const QVector<LogEntry>& entries)
 {
     entries_ = entries;
-    updateScrollBar();
-    viewport()->update();
+    rebuildAll();
 }
 
-void LogView::clear()
+void LogView::clearLog()
 {
     entries_.clear();
-    updateScrollBar();
-    viewport()->update();
+    clear();
 }
 
 void LogView::setHexMode(bool enabled)
 {
-    hexMode_ = enabled;
-    viewport()->update();
+    if (hexMode_ != enabled) {
+        hexMode_ = enabled;
+        rebuildAll();
+    }
 }
 
 void LogView::setShowTimestamp(bool enabled)
 {
-    showTimestamp_ = enabled;
-    viewport()->update();
+    if (showTimestamp_ != enabled) {
+        showTimestamp_ = enabled;
+        rebuildAll();
+    }
 }
 
 void LogView::setAutoScroll(bool enabled)
 {
     autoScroll_ = enabled;
+    userScrolledUp_ = false;
     if (enabled) {
-        scrollToBottom();
+        QScrollBar* vbar = verticalScrollBar();
+        programmaticScroll_ = true;
+        vbar->setValue(vbar->maximum());
+        programmaticScroll_ = false;
     }
 }
 
 void LogView::setFilter(const QString& keyword)
 {
     filter_ = keyword;
-    viewport()->update();
+    rebuildAll();
 }
 
 bool LogView::hexMode() const { return hexMode_; }
@@ -79,75 +118,93 @@ QString LogView::filter() const { return filter_; }
 
 void LogView::scrollToBottom()
 {
-    verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+    QScrollBar* vbar = verticalScrollBar();
+    vbar->setValue(vbar->maximum());
 }
 
-void LogView::paintEvent(QPaintEvent* event)
+void LogView::contextMenuEvent(QContextMenuEvent* event)
 {
-    QPainter painter(viewport());
-    painter.setFont(font());
-    painter.fillRect(event->rect(), viewport()->palette().base());
+    QMenu* menu = createStandardContextMenu();
+    menu->addSeparator();
+    QAction* copyAllAction = menu->addAction("复制全部");
+    connect(copyAllAction, &QAction::triggered, [this]() {
+        QApplication::clipboard()->setText(toPlainText());
+    });
+    QAction* clearAction = menu->addAction("清空");
+    connect(clearAction, &QAction::triggered, [this]() {
+        clearLog();
+    });
+    menu->exec(event->globalPos());
+    delete menu;
+}
 
-    int start = visibleStartIndex();
-    int end = visibleEndIndex();
-    int lh = lineHeight();
-    int y = start * lh;
-
-    for (int i = start; i < end && i < entries_.size(); ++i) {
-        drawLine(painter, i, y);
-        y += lh;
+void LogView::mousePressEvent(QMouseEvent* event)
+{
+    QPlainTextEdit::mousePressEvent(event);
+    if (event->button() == Qt::LeftButton) {
+        userScrolledUp_ = true;
     }
 }
 
-void LogView::resizeEvent(QResizeEvent* event)
+void LogView::rebuildAll()
 {
-    QAbstractScrollArea::resizeEvent(event);
-    updateScrollBar();
-}
-
-int LogView::lineHeight() const
-{
-    return QFontMetrics(font()).height() + 2;
-}
-
-int LogView::visibleStartIndex() const
-{
-    return verticalScrollBar()->value() / lineHeight();
-}
-
-int LogView::visibleEndIndex() const
-{
-    int lh = lineHeight();
-    int visible = (viewport()->height() / lh) + 2;
-    return qMin(visibleStartIndex() + visible, entries_.size());
-}
-
-void LogView::updateScrollBar()
-{
-    int lh = lineHeight();
-    int totalLines = entries_.size() + (viewport()->height() / lh);
-    verticalScrollBar()->setRange(0, qMax(0, entries_.size() * lh - viewport()->height()));
-    verticalScrollBar()->setPageStep(viewport()->height());
-}
-
-void LogView::drawLine(QPainter& painter, int index, int y)
-{
-    const LogEntry& entry = entries_[index];
-    int lh = lineHeight();
-    QColor color = LogParser::levelColor(entry.level);
-
-    painter.setPen(color);
-
-    if (hexMode_ && !entry.rawBytes.isEmpty()) {
-        QString hexText = LogParser::formatHex(entry.rawBytes, 0);
-        QStringList hexLines = hexText.split('\n');
-        for (int h = 0; h < hexLines.size(); ++h) {
-            painter.setPen(color);
-            painter.drawText(0, y, viewport()->width(), lh, Qt::AlignLeft | Qt::AlignTop, hexLines[h]);
-            y += lh;
+    clear();
+    for (const auto& entry : entries_) {
+        if (filter_.isEmpty() || entry.text.contains(filter_, Qt::CaseInsensitive)) {
+            renderEntry(entry);
         }
-    } else {
-        QString display = LogParser::formatDisplay(entry, showTimestamp_);
-        painter.drawText(4, y, viewport()->width() - 8, lh, Qt::AlignLeft | Qt::AlignTop, display);
     }
+    if (autoScroll_ && !userScrolledUp_) {
+        QScrollBar* vbar = verticalScrollBar();
+        programmaticScroll_ = true;
+        vbar->setValue(vbar->maximum());
+        programmaticScroll_ = false;
+    }
+}
+
+void LogView::renderEntry(const LogEntry& entry)
+{
+    QColor color = getLineColor(entry.level);
+    QString htmlColor = colorToHtml(color);
+    QString text = makeDisplayText(entry);
+
+    QString html = QString("<span style=\"color:%1;\">%2</span>")
+                       .arg(htmlColor, text.toHtmlEscaped());
+
+    QTextCursor cursor = QTextCursor(document());
+    cursor.movePosition(QTextCursor::End);
+    cursor.insertHtml(html);
+    cursor.insertBlock();
+}
+
+QString LogView::makeDisplayText(const LogEntry& entry) const
+{
+    if (hexMode_ && !entry.rawBytes.isEmpty()) {
+        return LogParser::formatHex(entry.rawBytes, 0);
+    }
+
+    QString tsPart;
+    if (showTimestamp_) {
+        tsPart = QString("[%1] ").arg(entry.timestamp);
+    }
+    QString levelPart;
+    if (!entry.level.isEmpty()) {
+        levelPart = QString("[%1] ").arg(entry.level);
+    }
+    return tsPart + levelPart + entry.text;
+}
+
+QColor LogView::getLineColor(const QString& level) const
+{
+    if (level == "ERROR") return QColor("#FF6B6B");
+    if (level == "WARN")  return QColor("#FFD93D");
+    if (level == "INFO")  return QColor("#6BCB77");
+    if (level == "DEBUG") return QColor("#4D96FF");
+    if (level == "TRACE") return QColor("#9CA3AF");
+    return QColor("#E0E0E0");
+}
+
+QString LogView::colorToHtml(const QColor& color) const
+{
+    return color.name();
 }

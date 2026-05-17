@@ -1,5 +1,5 @@
 /* ============================================================
-   EmberIntel Serial Monitor - Dark Terminal Theme
+   emberInter 尘智 - Dark Terminal Theme
    Design System: Developer Tool / IDE
    Colors: #0F172A bg | #1E293B surface | #334155 border
    Accent: #22C55E green | Text: #F8FAFC | Error: #FF3333
@@ -34,10 +34,8 @@ QSplitter::handle:hover {
 
 #sidebar QLabel#sectionTitle {
     color: #64748B;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 1px;
     padding: 12px 16px 4px 16px;
 }
 
@@ -128,8 +126,6 @@ QSplitter::handle:hover {
     font-size: 13px;
     font-weight: 700;
     margin: 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
 }
 
 #connectBtn:hover {
@@ -149,8 +145,6 @@ QSplitter::handle:hover {
     font-size: 13px;
     font-weight: 700;
     margin: 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
 }
 
 #disconnectBtn:hover {
@@ -268,11 +262,15 @@ QTabBar::close-button:hover {
 
 /* --- Log View --- */
 #logView {
-    background-color: #0A0E14;
+    background-color: #0F172A;
+    color: #E0E0E0;
     border: 1px solid #1E293B;
     border-radius: 8px;
     margin: 4px 8px;
-    font-family: "Cascadia Code", "Consolas", "Courier New", monospace;
+    font-family: "Cascadia Code", "Consolas", "Microsoft YaHei", monospace;
+    font-size: 13px;
+    selection-background-color: #1E40AF;
+    selection-color: #FFFFFF;
 }
 
 /* --- Toolbar (Filter + Controls) --- */

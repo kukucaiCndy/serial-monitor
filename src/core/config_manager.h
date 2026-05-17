@@ -17,6 +17,7 @@ struct DisplayConfig {
     int fontSize = 12;
     int bufferSize = 10000;
     bool autoScroll = true;
+    bool autoReconnect = true;
 };
 
 struct SendConfig {
@@ -37,6 +38,7 @@ struct AppConfig {
     int windowWidth = 1000;
     int windowHeight = 700;
     QVector<TabConfig> tabs;
+    QString ipcName = "serial_monitor_ipc";
 };
 
 class ConfigManager {

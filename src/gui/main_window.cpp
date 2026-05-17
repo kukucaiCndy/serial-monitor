@@ -15,6 +15,7 @@
 #include <QStyleFactory>
 #include <QJsonArray>
 #include <QSerialPortInfo>
+#include <QRegularExpression>
 #include <spdlog/spdlog.h>
 
 MainWindow::MainWindow(QWidget* parent)
@@ -24,7 +25,9 @@ MainWindow::MainWindow(QWidget* parent)
     , portList_(nullptr)
     , portCombo_(nullptr)
     , baudCombo_(nullptr)
-    , paramsCombo_(nullptr)
+    , dataBitsCombo_(nullptr)
+    , parityCombo_(nullptr)
+    , stopBitsCombo_(nullptr)
     , connectBtn_(nullptr)
     , tabWidget_(nullptr)
     , addTabBtn_(nullptr)
@@ -38,10 +41,12 @@ MainWindow::MainWindow(QWidget* parent)
     , statusBar_(nullptr)
     , ipcServer_(nullptr)
     , logBuffer_(new LogBuffer(10000))
+    , statusTimer_(new QTimer(this))
+    , connectionTimerRunning_(false)
     , rxBytes_(0)
     , txBytes_(0)
 {
-    setWindowTitle("EmberIntel Serial Monitor");
+    setWindowTitle("emberInter - 尘智串口调试工具");
     setMinimumSize(900, 600);
 
     setupUi();
@@ -96,12 +101,12 @@ void MainWindow::setupSidebar(QWidget* sidebar)
     layout->setContentsMargins(0, 8, 0, 8);
     layout->setSpacing(0);
 
-    QLabel* brandLabel = new QLabel("EMBERINTEL", sidebar);
-    brandLabel->setStyleSheet("color: #22C55E; font-size: 11px; font-weight: 800; "
-                              "letter-spacing: 3px; padding: 8px 20px 12px 20px;");
+    QLabel* brandLabel = new QLabel("emberInter 尘智", sidebar);
+    brandLabel->setStyleSheet("color: #22C55E; font-size: 14px; font-weight: 800; "
+                              "padding: 8px 20px 12px 20px;");
     layout->addWidget(brandLabel);
 
-    QLabel* connTitle = new QLabel("CONNECTION", sidebar);
+    QLabel* connTitle = new QLabel("连接设置", sidebar);
     connTitle->setObjectName("sectionTitle");
     layout->addWidget(connTitle);
 
@@ -111,26 +116,41 @@ void MainWindow::setupSidebar(QWidget* sidebar)
     cpLayout->setContentsMargins(0, 4, 0, 4);
     cpLayout->setSpacing(0);
 
-    cpLayout->addWidget(new QLabel("Port", connectPanel));
+    cpLayout->addWidget(new QLabel("串口号", connectPanel));
     portCombo_ = new QComboBox(connectPanel);
     portCombo_->setEditable(true);
     portCombo_->setInsertPolicy(QComboBox::NoInsert);
     cpLayout->addWidget(portCombo_);
 
-    cpLayout->addWidget(new QLabel("Baud Rate", connectPanel));
+    cpLayout->addWidget(new QLabel("波特率", connectPanel));
     baudCombo_ = new QComboBox(connectPanel);
     baudCombo_->setEditable(true);
     baudCombo_->addItems({"115200", "921600", "460800", "230400", "57600", "38400", "19200", "9600"});
     baudCombo_->setCurrentText("115200");
     cpLayout->addWidget(baudCombo_);
 
-    cpLayout->addWidget(new QLabel("Config", connectPanel));
-    paramsCombo_ = new QComboBox(connectPanel);
-    paramsCombo_->setObjectName("connectParams");
-    paramsCombo_->addItems({"8N1", "7E1", "7O1", "8N2"});
-    cpLayout->addWidget(paramsCombo_);
+    cpLayout->addWidget(new QLabel("数据位", connectPanel));
+    dataBitsCombo_ = new QComboBox(connectPanel);
+    dataBitsCombo_->setObjectName("connectParams");
+    dataBitsCombo_->addItems({"8", "7", "6", "5"});
+    dataBitsCombo_->setCurrentIndex(0);
+    cpLayout->addWidget(dataBitsCombo_);
 
-    connectBtn_ = new QPushButton("CONNECT", connectPanel);
+    cpLayout->addWidget(new QLabel("校验位", connectPanel));
+    parityCombo_ = new QComboBox(connectPanel);
+    parityCombo_->setObjectName("connectParams");
+    parityCombo_->addItems({"无校验", "偶校验", "奇校验", "标记校验", "空格校验"});
+    parityCombo_->setCurrentIndex(0);
+    cpLayout->addWidget(parityCombo_);
+
+    cpLayout->addWidget(new QLabel("停止位", connectPanel));
+    stopBitsCombo_ = new QComboBox(connectPanel);
+    stopBitsCombo_->setObjectName("connectParams");
+    stopBitsCombo_->addItems({"1", "1.5", "2"});
+    stopBitsCombo_->setCurrentIndex(0);
+    cpLayout->addWidget(stopBitsCombo_);
+
+    connectBtn_ = new QPushButton("连接", connectPanel);
     connectBtn_->setObjectName("connectBtn");
     connectBtn_->setCursor(Qt::PointingHandCursor);
     cpLayout->addWidget(connectBtn_);
@@ -139,7 +159,7 @@ void MainWindow::setupSidebar(QWidget* sidebar)
 
     layout->addSpacing(8);
 
-    QLabel* portsTitle = new QLabel("SERIAL PORTS", sidebar);
+    QLabel* portsTitle = new QLabel("可用串口", sidebar);
     portsTitle->setObjectName("sectionTitle");
     layout->addWidget(portsTitle);
 
@@ -148,7 +168,7 @@ void MainWindow::setupSidebar(QWidget* sidebar)
     portList_->setCursor(Qt::PointingHandCursor);
     layout->addWidget(portList_, 1);
 
-    QPushButton* refreshBtn = new QPushButton("REFRESH", sidebar);
+    QPushButton* refreshBtn = new QPushButton("刷新", sidebar);
     refreshBtn->setObjectName("refreshBtn");
     refreshBtn->setCursor(Qt::PointingHandCursor);
     connect(refreshBtn, &QPushButton::clicked, this, &MainWindow::onRefreshPorts);
@@ -156,7 +176,7 @@ void MainWindow::setupSidebar(QWidget* sidebar)
 
     layout->addSpacing(8);
 
-    QPushButton* settingsBtn = new QPushButton("SETTINGS", sidebar);
+    QPushButton* settingsBtn = new QPushButton("设置", sidebar);
     settingsBtn->setObjectName("refreshBtn");
     settingsBtn->setCursor(Qt::PointingHandCursor);
     connect(settingsBtn, &QPushButton::clicked, this, &MainWindow::onSettings);
@@ -181,7 +201,7 @@ void MainWindow::setupMainArea(QWidget* mainArea)
     addTabBtn_->setObjectName("addTabBtn");
     addTabBtn_->setFixedSize(32, 32);
     addTabBtn_->setCursor(Qt::PointingHandCursor);
-    addTabBtn_->setToolTip("New Tab");
+    addTabBtn_->setToolTip("新建标签页");
     tbLayout->addWidget(addTabBtn_);
     layout->addWidget(tabBar);
 
@@ -196,25 +216,25 @@ void MainWindow::setupMainArea(QWidget* mainArea)
     tlLayout->setSpacing(6);
 
     filterEdit_ = new QLineEdit(toolbar);
-    filterEdit_->setPlaceholderText("Filter logs... (Ctrl+F)");
+    filterEdit_->setPlaceholderText("过滤日志...");
     filterEdit_->setClearButtonEnabled(true);
     tlLayout->addWidget(filterEdit_, 1);
 
     displayModeCombo_ = new QComboBox(toolbar);
-    displayModeCombo_->addItems({"Text", "HEX"});
+    displayModeCombo_->addItems({"文本", "HEX"});
     tlLayout->addWidget(displayModeCombo_);
 
-    pauseBtn_ = new QPushButton("Pause", toolbar);
+    pauseBtn_ = new QPushButton("暂停", toolbar);
     pauseBtn_->setCheckable(true);
     pauseBtn_->setCursor(Qt::PointingHandCursor);
     tlLayout->addWidget(pauseBtn_);
 
-    clearBtn_ = new QPushButton("Clear", toolbar);
+    clearBtn_ = new QPushButton("清空", toolbar);
     clearBtn_->setObjectName("clearBtn");
     clearBtn_->setCursor(Qt::PointingHandCursor);
     tlLayout->addWidget(clearBtn_);
 
-    exportBtn_ = new QPushButton("Export", toolbar);
+    exportBtn_ = new QPushButton("导出", toolbar);
     exportBtn_->setCursor(Qt::PointingHandCursor);
     tlLayout->addWidget(exportBtn_);
 
@@ -259,6 +279,13 @@ void MainWindow::setupConnections()
 
     ipcServer_ = new IPCServer(this);
     ipcServer_->start();
+
+    connect(statusTimer_, &QTimer::timeout, [this]() {
+        qint64 uptime = connectionTimerRunning_ ? connectionTimer_.elapsed() / 1000 : 0;
+        statusBar_->setStats(rxBytes_, txBytes_, uptime);
+        statusBar_->setIpcClientCount(ipcServer_->clientCount());
+    });
+    statusTimer_->start(1000);
 
     connect(ipcServer_, &IPCServer::commandReceived,
             [this](const QString& clientId, const QString& cmd,
@@ -313,19 +340,136 @@ void MainWindow::setupConnections()
             ipcServer_->sendResponse(clientId, reqId, true, data);
         }
         else if (cmd == "clear_logs") {
-            logView_->clear();
+            logView_->clearLog();
             logBuffer_->clear();
-            data["message"] = "Logs cleared";
+            data["message"] = "日志已清空";
             ipcServer_->sendResponse(clientId, reqId, true, data);
         }
         else if (cmd == "set_filter") {
             QString kw = params["keyword"].toString();
             logView_->setFilter(kw);
+            filterEdit_->setText(kw);
             data["keyword"] = kw;
             ipcServer_->sendResponse(clientId, reqId, true, data);
         }
+        else if (cmd == "connect") {
+            QString port = params["port"].toString();
+            int baud = params["baudrate"].toInt(115200);
+            if (port.isEmpty()) {
+                data["message"] = "缺少串口号";
+                ipcServer_->sendResponse(clientId, reqId, false, data);
+                return;
+            }
+
+            TabInfo* tab = tabWidget_->currentTabInfo();
+            if (tab && tab->connected && tab->port == port) {
+                data["port"] = port;
+                data["connected"] = true;
+                data["message"] = QString("已连接 %1 @ %2").arg(port).arg(baud);
+                ipcServer_->sendResponse(clientId, reqId, true, data);
+                return;
+            }
+
+            if (tab && tab->connected) {
+                onConnectOrDisconnect();
+            }
+
+            PendingConnectRequest pending;
+            pending.clientId = clientId;
+            pending.requestId = reqId;
+            pending.port = port;
+            pending.baudrate = baud;
+            pendingConnects_[port] = pending;
+
+            portCombo_->setCurrentText(port);
+            baudCombo_->setCurrentText(QString::number(baud));
+            onConnectOrDisconnect();
+        }
+        else if (cmd == "disconnect") {
+            onConnectOrDisconnect();
+            data["message"] = "已断开";
+            ipcServer_->sendResponse(clientId, reqId, true, data);
+        }
+        else if (cmd == "send_text") {
+            QString text = params["data"].toString();
+            QString append = params["append"].toString("CRLF");
+            TabInfo* tab = tabWidget_->currentTabInfo();
+            if (tab && tab->engine && tab->connected) {
+                qint64 sent = tab->engine->sendText(text, append);
+                if (sent > 0) txBytes_ += sent;
+                data["bytes_sent"] = sent;
+                data["message"] = QString("已发送 %1 字节").arg(sent);
+                ipcServer_->sendResponse(clientId, reqId, sent > 0, data);
+            } else {
+                data["message"] = "没有活动连接";
+                ipcServer_->sendResponse(clientId, reqId, false, data);
+            }
+        }
+        else if (cmd == "send_hex") {
+            QString hexStr = params["data"].toString();
+            hexStr.remove(QRegularExpression("\\s"));
+            if (hexStr.length() % 2 != 0) {
+                data["message"] = "HEX数据格式无效";
+                ipcServer_->sendResponse(clientId, reqId, false, data);
+                return;
+            }
+            QByteArray bytes;
+            for (int i = 0; i < hexStr.length(); i += 2) {
+                bool ok;
+                unsigned char byte = static_cast<unsigned char>(
+                    hexStr.mid(i, 2).toUInt(&ok, 16));
+                if (!ok) { data["message"] = "HEX数据无效"; ipcServer_->sendResponse(clientId, reqId, false, data); return; }
+                bytes.append(static_cast<char>(byte));
+            }
+            TabInfo* tab = tabWidget_->currentTabInfo();
+            if (tab && tab->engine && tab->connected) {
+                qint64 sent = tab->engine->sendHex(bytes);
+                if (sent > 0) txBytes_ += sent;
+                data["bytes_sent"] = sent;
+                data["message"] = QString("已发送 %1 字节 (HEX)").arg(sent);
+                ipcServer_->sendResponse(clientId, reqId, sent > 0, data);
+            } else {
+                data["message"] = "没有活动连接";
+                ipcServer_->sendResponse(clientId, reqId, false, data);
+            }
+        }
+        else if (cmd == "export_logs") {
+            QString path = params["file_path"].toString();
+            if (path.isEmpty()) {
+                data["message"] = "缺少文件路径";
+                ipcServer_->sendResponse(clientId, reqId, false, data);
+                return;
+            }
+            TabInfo* tab = tabWidget_->currentTabInfo();
+            bool ok = LogExporter::exportToJson(logBuffer_->getAll(),
+                        tab ? tab->port : "", path);
+            data["file_path"] = path;
+            data["entry_count"] = logBuffer_->size();
+            data["message"] = ok ? "导出成功" : "导出失败";
+            ipcServer_->sendResponse(clientId, reqId, ok, data);
+        }
+        else if (cmd == "set_display_mode") {
+            bool hex = params["hex"].toBool(false);
+            logView_->setHexMode(hex);
+            displayModeCombo_->setCurrentIndex(hex ? 1 : 0);
+            data["hex_mode"] = hex;
+            ipcServer_->sendResponse(clientId, reqId, true, data);
+        }
+        else if (cmd == "set_timestamp") {
+            bool show = params["show"].toBool(true);
+            logView_->setShowTimestamp(show);
+            data["show_timestamp"] = show;
+            ipcServer_->sendResponse(clientId, reqId, true, data);
+        }
+        else if (cmd == "pause_logs") {
+            bool pause = params["pause"].toBool(true);
+            logView_->setAutoScroll(!pause);
+            pauseBtn_->setChecked(pause);
+            data["paused"] = pause;
+            ipcServer_->sendResponse(clientId, reqId, true, data);
+        }
         else {
-            data["message"] = "Unknown command: " + cmd;
+            data["message"] = "未知命令: " + cmd;
             ipcServer_->sendResponse(clientId, reqId, false, data);
         }
     });
@@ -359,7 +503,7 @@ void MainWindow::scanSerialPorts()
     }
 
     if (ports.isEmpty()) {
-        portList_->addItem("No serial ports found");
+        portList_->addItem("未发现串口");
         portList_->item(0)->setFlags(Qt::NoItemFlags);
     }
 
@@ -393,12 +537,13 @@ void MainWindow::onConnectOrDisconnect()
         tabWidget_->setTabConnected(tabWidget_->currentIndex(), false);
         updateConnectButtonState(false);
         statusBar_->setConnectionStatus(false);
+        connectionTimerRunning_ = false;
         return;
     }
 
     QString port = portCombo_->currentText().trimmed();
     if (port.isEmpty()) {
-        QMessageBox::warning(this, "No Port", "Please select or enter a serial port.");
+        QMessageBox::warning(this, "提示", "请选择或输入串口号。");
         return;
     }
 
@@ -406,14 +551,23 @@ void MainWindow::onConnectOrDisconnect()
     config.port = port;
     config.baudrate = baudCombo_->currentText().toInt();
 
-    QString params = paramsCombo_->currentText();
-    if (params.length() >= 3) {
-        config.databits = params[0] == '7' ? QSerialPort::Data7 : QSerialPort::Data8;
-        QChar p = params[1];
-        if (p == 'E') config.parity = QSerialPort::EvenParity;
-        else if (p == 'O') config.parity = QSerialPort::OddParity;
-        else config.parity = QSerialPort::NoParity;
-        config.stopbits = params[2] == '2' ? QSerialPort::TwoStop : QSerialPort::OneStop;
+    config.databits = static_cast<QSerialPort::DataBits>(
+        dataBitsCombo_->currentText().toInt());
+
+    int parityIdx = parityCombo_->currentIndex();
+    switch (parityIdx) {
+        case 1: config.parity = QSerialPort::EvenParity; break;
+        case 2: config.parity = QSerialPort::OddParity; break;
+        case 3: config.parity = QSerialPort::MarkParity; break;
+        case 4: config.parity = QSerialPort::SpaceParity; break;
+        default: config.parity = QSerialPort::NoParity; break;
+    }
+
+    int stopIdx = stopBitsCombo_->currentIndex();
+    switch (stopIdx) {
+        case 1: config.stopbits = QSerialPort::OneAndHalfStop; break;
+        case 2: config.stopbits = QSerialPort::TwoStop; break;
+        default: config.stopbits = QSerialPort::OneStop; break;
     }
 
     tab->port = port;
@@ -425,6 +579,8 @@ void MainWindow::onConnectOrDisconnect()
     connect(tab->engine, &SerialEngine::dataSent,
             [this](const QString&, qint64 bytes) { txBytes_ += bytes; });
 
+    auto& cfg = ConfigManager::instance().config();
+    tab->engine->setAutoReconnect(cfg.display.autoReconnect);
     tab->engine->open(config);
 
     QString tabName = QString("%1 @ %2").arg(port).arg(config.baudrate);
@@ -434,10 +590,10 @@ void MainWindow::onConnectOrDisconnect()
 void MainWindow::updateConnectButtonState(bool connected)
 {
     if (connected) {
-        connectBtn_->setText("DISCONNECT");
+        connectBtn_->setText("断开");
         connectBtn_->setObjectName("disconnectBtn");
     } else {
-        connectBtn_->setText("CONNECT");
+        connectBtn_->setText("连接");
         connectBtn_->setObjectName("connectBtn");
     }
 
@@ -453,19 +609,32 @@ void MainWindow::onSettings()
         dlg.saveToConfig();
         auto& cfg = ConfigManager::instance().config();
         logView_->setShowTimestamp(cfg.display.showTimestamp);
+        logView_->setAutoScroll(cfg.display.autoScroll);
         logBuffer_->setMaxSize(cfg.display.bufferSize);
+
+        if (cfg.display.fontSize >= 8) {
+            QFont f = logView_->font();
+            f.setPointSize(cfg.display.fontSize);
+            logView_->setFont(f);
+        }
+
+        for (const auto& t : tabWidget_->allTabs()) {
+            if (t->engine) {
+                t->engine->setAutoReconnect(cfg.display.autoReconnect);
+            }
+        }
     }
 }
 
 void MainWindow::onClear()
 {
-    logView_->clear();
+    logView_->clearLog();
     logBuffer_->clear();
 }
 
 void MainWindow::onExport()
 {
-    QString path = QFileDialog::getSaveFileName(this, "Export Logs", "", "JSON Files (*.json)");
+    QString path = QFileDialog::getSaveFileName(this, "导出日志", "", "JSON文件 (*.json)");
     if (path.isEmpty()) return;
 
     TabInfo* tab = tabWidget_->currentTabInfo();
@@ -476,7 +645,7 @@ void MainWindow::onExport()
 void MainWindow::onPauseToggled(bool paused)
 {
     logView_->setAutoScroll(!paused);
-    pauseBtn_->setText(paused ? "Resume" : "Pause");
+    pauseBtn_->setText(paused ? "继续" : "暂停");
 }
 
 void MainWindow::onFilterChanged(const QString& text)
@@ -544,6 +713,25 @@ void MainWindow::onSerialStatusChanged(const QString& port, bool connected,
     statusBar_->setPortInfo(port, config.baudrate);
     statusBar_->setConnectionStatus(connected);
     statusBar_->setIpcClientCount(ipcServer_->clientCount());
+
+    if (connected) {
+        if (!connectionTimerRunning_) {
+            connectionTimer_.start();
+            connectionTimerRunning_ = true;
+        }
+    }
+
+    if (pendingConnects_.contains(port)) {
+        auto pending = pendingConnects_.take(port);
+        QJsonObject resp;
+        resp["port"] = port;
+        resp["connected"] = connected;
+        resp["message"] = connected ?
+            QString("已连接 %1 @ %2").arg(port).arg(config.baudrate) :
+            QString("无法连接 %1").arg(port);
+        ipcServer_->sendResponse(pending.clientId, pending.requestId,
+                                 connected, resp);
+    }
 
     ipcServer_->broadcastStatus(port, connected, config, rxBytes_, txBytes_, 0);
 

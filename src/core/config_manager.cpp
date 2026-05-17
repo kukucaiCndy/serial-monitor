@@ -67,6 +67,7 @@ bool ConfigManager::load(const QString& path)
     config_.display.fontSize = display["font_size"].toInt(12);
     config_.display.bufferSize = display["buffer_size"].toInt(10000);
     config_.display.autoScroll = display["auto_scroll"].toBool(true);
+    config_.display.autoReconnect = display["auto_reconnect"].toBool(true);
 
     QJsonObject filters = root["filters"].toObject();
     QJsonArray filterArr = filters["history"].toArray();
@@ -84,6 +85,7 @@ bool ConfigManager::load(const QString& path)
     QJsonObject gui = root["gui"].toObject();
     config_.windowWidth = gui["window_width"].toInt(1000);
     config_.windowHeight = gui["window_height"].toInt(700);
+    config_.ipcName = gui["ipc_name"].toString("serial_monitor_ipc");
     QJsonArray tabsArr = gui["tabs"].toArray();
     for (const auto& val : tabsArr) {
         QJsonObject tab = val.toObject();
@@ -112,6 +114,7 @@ bool ConfigManager::save(const QString& path)
     display["font_size"] = config_.display.fontSize;
     display["buffer_size"] = config_.display.bufferSize;
     display["auto_scroll"] = config_.display.autoScroll;
+    display["auto_reconnect"] = config_.display.autoReconnect;
 
     QJsonObject filters;
     QJsonArray filterArr;
@@ -131,6 +134,7 @@ bool ConfigManager::save(const QString& path)
     QJsonObject gui;
     gui["window_width"] = config_.windowWidth;
     gui["window_height"] = config_.windowHeight;
+    gui["ipc_name"] = config_.ipcName;
     QJsonArray tabsArr;
     for (const auto& t : config_.tabs) {
         QJsonObject tab;
