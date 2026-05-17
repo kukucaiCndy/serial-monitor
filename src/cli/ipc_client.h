@@ -15,7 +15,8 @@ public:
     bool connectToServer(const QString& name = "serial_monitor_ipc");
     void disconnect();
     bool isConnected() const;
-    void sendCommand(const QString& command, const QJsonObject& params = {});
+    void sendCommand(const QString& command, const QJsonObject& params = {},
+                     const QString& requestId = "");
 
 signals:
     void connected();

@@ -21,6 +21,8 @@ public:
     void broadcastStatus(const QString& port, bool connected,
                          const SerialConfig& config, qint64 rxBytes,
                          qint64 txBytes, qint64 uptimeSeconds);
+    void sendResponse(const QString& clientId, const QString& requestId,
+                      bool success, const QJsonObject& data);
     int clientCount() const;
 
 signals:

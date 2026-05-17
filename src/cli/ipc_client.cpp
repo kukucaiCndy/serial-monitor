@@ -48,14 +48,15 @@ bool IPCClient::isConnected() const
     return socket_ && socket_->state() == QLocalSocket::ConnectedState;
 }
 
-void IPCClient::sendCommand(const QString& command, const QJsonObject& params)
+void IPCClient::sendCommand(const QString& command, const QJsonObject& params,
+                            const QString& requestId)
 {
     if (!socket_ || !socket_->isOpen()) {
         spdlog::warn("Cannot send command: not connected");
         return;
     }
 
-    QByteArray msg = IpcProtocol::buildMessage(command, params);
+    QByteArray msg = IpcProtocol::buildMessage(command, params, requestId);
     socket_->write(msg);
     socket_->flush();
 }
@@ -115,7 +116,7 @@ void IPCClient::processBuffer()
             emit errorOccurred(message);
         } else if (type == "server_shutdown") {
             spdlog::info("Server is shutting down");
-            emit errorOccurred("服务端已关闭");
+            emit errorOccurred("Server closed");
         }
     }
 }

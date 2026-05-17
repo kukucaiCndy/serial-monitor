@@ -2,6 +2,8 @@
 #include "ipc_protocol.h"
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonArray>
+#include <QSerialPortInfo>
 #include <spdlog/spdlog.h>
 
 IPCServer::IPCServer(QObject* parent)
@@ -34,8 +36,14 @@ void IPCServer::stop()
 {
     if (!server_) return;
 
+    QJsonObject payload;
+    payload["message"] = "server shutting down";
+    QByteArray msg = IpcProtocol::buildMessage("server_shutdown", payload);
     for (auto* client : clients_) {
-        client->disconnectFromServer();
+        if (client && client->isOpen()) {
+            sendToClient(client, msg);
+            client->disconnectFromServer();
+        }
     }
 
     server_->close();
@@ -68,6 +76,19 @@ void IPCServer::broadcastStatus(const QString& port, bool connected,
             sendToClient(client, message);
         }
     }
+}
+
+void IPCServer::sendResponse(const QString& clientId, const QString& requestId,
+                              bool success, const QJsonObject& data)
+{
+    bool ok;
+    quintptr ptr = clientId.toULongLong(&ok);
+    if (!ok) return;
+    QLocalSocket* client = reinterpret_cast<QLocalSocket*>(ptr);
+    if (!clients_.contains(client)) return;
+
+    QByteArray response = IpcProtocol::buildResponse(requestId, success, data);
+    sendToClient(client, response);
 }
 
 int IPCServer::clientCount() const
@@ -106,7 +127,6 @@ void IPCServer::onDisconnected()
         QString clientId = QString::number(reinterpret_cast<quintptr>(client));
         spdlog::info("IPC client disconnected: {}", clientId.toStdString());
         emit clientDisconnected(clientId);
-
         clients_.removeAt(index);
         readBuffers_.removeAt(index);
     }
@@ -120,7 +140,6 @@ void IPCServer::onReadyRead()
 
     int index = clients_.indexOf(client);
     if (index < 0) return;
-
     processClientData(client, index);
 }
 
@@ -134,7 +153,6 @@ void IPCServer::processClientData(QLocalSocket* client, int clientIndex)
 
         QByteArray line = readBuffers_[clientIndex].left(newlinePos).trimmed();
         readBuffers_[clientIndex].remove(0, newlinePos + 1);
-
         if (line.isEmpty()) continue;
 
         QJsonObject msg = IpcProtocol::parseMessage(line);
@@ -145,18 +163,11 @@ void IPCServer::processClientData(QLocalSocket* client, int clientIndex)
         QJsonObject payload = msg["payload"].toObject();
         QString clientId = QString::number(reinterpret_cast<quintptr>(client));
 
-        if (type == "hello" || type == "goodbye") {
+        if (type == "hello" || type == "goodbye" || type == "welcome") {
             continue;
         }
 
         emit commandReceived(clientId, type, payload, id);
-
-        if (type == "get_status") {
-            QJsonObject data;
-            data["message"] = "ok";
-            QByteArray response = IpcProtocol::buildResponse(id, true, data);
-            sendToClient(client, response);
-        }
     }
 }
 

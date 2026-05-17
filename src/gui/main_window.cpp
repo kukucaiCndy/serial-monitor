@@ -3,6 +3,7 @@
 #include "settings_dialog.h"
 #include "log_parser.h"
 #include "log_exporter.h"
+#include "ipc_protocol.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QMenuBar>
@@ -12,6 +13,8 @@
 #include <QFile>
 #include <QApplication>
 #include <QStyleFactory>
+#include <QJsonArray>
+#include <QSerialPortInfo>
 #include <spdlog/spdlog.h>
 
 MainWindow::MainWindow(QWidget* parent)
@@ -256,6 +259,76 @@ void MainWindow::setupConnections()
 
     ipcServer_ = new IPCServer(this);
     ipcServer_->start();
+
+    connect(ipcServer_, &IPCServer::commandReceived,
+            [this](const QString& clientId, const QString& cmd,
+                   const QJsonObject& params, const QString& reqId) {
+        QJsonObject data;
+
+        if (cmd == "list_ports") {
+            QJsonArray ports;
+            for (const auto& info : QSerialPortInfo::availablePorts()) {
+                QJsonObject p;
+                p["name"] = info.portName();
+                p["description"] = info.description();
+                p["vid"] = QString::number(info.vendorIdentifier(), 16);
+                p["pid"] = QString::number(info.productIdentifier(), 16);
+                bool rec = info.description().contains("USB", Qt::CaseInsensitive)
+                        || info.description().contains("JLink", Qt::CaseInsensitive)
+                        || info.description().contains("nRF", Qt::CaseInsensitive)
+                        || info.description().contains("CDC", Qt::CaseInsensitive);
+                p["recommended"] = rec;
+                ports.append(p);
+            }
+            data["ports"] = ports;
+            ipcServer_->sendResponse(clientId, reqId, true, data);
+        }
+        else if (cmd == "get_status") {
+            TabInfo* tab = tabWidget_->currentTabInfo();
+            if (tab) {
+                data["port"] = tab->port;
+                data["connected"] = tab->connected;
+                data["buffer_size"] = logBuffer_->size();
+                data["rx_bytes"] = rxBytes_;
+                data["tx_bytes"] = txBytes_;
+            }
+            ipcServer_->sendResponse(clientId, reqId, true, data);
+        }
+        else if (cmd == "get_logs") {
+            int count = params["count"].toInt(100);
+            QString filter = params["filter"].toString();
+            QVector<LogEntry> entries;
+            if (filter.isEmpty()) {
+                entries = logBuffer_->getRecent(count);
+            } else {
+                entries = logBuffer_->getFiltered(filter, count);
+            }
+            QJsonArray arr;
+            for (const auto& e : entries) {
+                arr.append(IpcProtocol::buildLogEntryMessage(e));
+            }
+            data["total_count"] = logBuffer_->size();
+            data["returned_count"] = entries.size();
+            data["entries"] = arr;
+            ipcServer_->sendResponse(clientId, reqId, true, data);
+        }
+        else if (cmd == "clear_logs") {
+            logView_->clear();
+            logBuffer_->clear();
+            data["message"] = "Logs cleared";
+            ipcServer_->sendResponse(clientId, reqId, true, data);
+        }
+        else if (cmd == "set_filter") {
+            QString kw = params["keyword"].toString();
+            logView_->setFilter(kw);
+            data["keyword"] = kw;
+            ipcServer_->sendResponse(clientId, reqId, true, data);
+        }
+        else {
+            data["message"] = "Unknown command: " + cmd;
+            ipcServer_->sendResponse(clientId, reqId, false, data);
+        }
+    });
 }
 
 void MainWindow::scanSerialPorts()
