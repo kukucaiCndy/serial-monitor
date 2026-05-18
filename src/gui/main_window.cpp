@@ -480,6 +480,42 @@ void MainWindow::setupConnections()
                 ipcServer_->sendResponse(clientId, reqId, false, data);
             }
         }
+        else if (cmd == "send_file") {
+            QString base64 = params["data"].toString();
+            QByteArray bytes = QByteArray::fromBase64(base64.toLatin1());
+            if (bytes.isEmpty()) {
+                data["message"] = "二进制数据为空或无效";
+                ipcServer_->sendResponse(clientId, reqId, false, data);
+                return;
+            }
+            QString filename = params["filename"].toString();
+            TabInfo* tab = tabWidget_->currentTabInfo();
+            if (tab && tab->engine && tab->connected) {
+                qint64 sent = tab->engine->sendRaw(bytes);
+                if (sent > 0) {
+                    txBytes_ += sent;
+                    QString displayHex = QString(bytes.toHex(' ').toUpper());
+                    QString label = filename.isEmpty()
+                        ? QString("BIN (%1字节)").arg(bytes.size())
+                        : QString("%1 (%2字节)").arg(filename).arg(bytes.size());
+                    LogEntry entry(QDateTime::currentDateTime().toString("HH:mm:ss.zzz"),
+                                   "TX", label + "\n" + displayHex, bytes, tab->port);
+                    logBuffer_->append(entry);
+                    logView_->appendEntry(entry);
+                    ipcServer_->broadcastLog(entry);
+                }
+                data["bytes_sent"] = sent;
+                data["filename"] = filename;
+                data["file_size"] = bytes.size();
+                data["message"] = QString("已发送文件 %1 (%2 字节)")
+                    .arg(filename.isEmpty() ? "binary" : filename)
+                    .arg(sent);
+                ipcServer_->sendResponse(clientId, reqId, sent > 0, data);
+            } else {
+                data["message"] = "没有活动连接";
+                ipcServer_->sendResponse(clientId, reqId, false, data);
+            }
+        }
         else if (cmd == "export_logs") {
             QString path = params["file_path"].toString();
             if (path.isEmpty()) {

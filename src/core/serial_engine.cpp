@@ -130,6 +130,19 @@ qint64 SerialEngine::sendHex(const QByteArray& data)
     return written;
 }
 
+qint64 SerialEngine::sendRaw(const QByteArray& data)
+{
+    if (!serial_ || !serial_->isOpen()) {
+        return -1;
+    }
+
+    qint64 written = serial_->write(data);
+    if (written > 0) {
+        emit dataSent(config_.port, written);
+    }
+    return written;
+}
+
 void SerialEngine::setAutoReconnect(bool enabled)
 {
     autoReconnect_ = enabled;

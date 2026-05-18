@@ -3,7 +3,7 @@
 
 #define MyAppName "EmberInterDebugTool"
 #define MyAppCnName "尘智串口调试工具"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "EmberInter"
 #define MyAppExeName "serial-monitor.exe"
 

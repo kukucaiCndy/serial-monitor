@@ -5,6 +5,7 @@
 #include <QCommandLineParser>
 #include <QTextStream>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QTimer>
@@ -77,6 +78,7 @@ int CLIApp::run(int argc, char* argv[])
     parser.addOption(QCommandLineOption("json", "JSON输出模式"));
     parser.addOption(QCommandLineOption("ipc", "IPC服务名", "NAME", "serial_monitor_ipc"));
     parser.addOption(QCommandLineOption("send", "发送数据后退出", "DATA"));
+    parser.addOption(QCommandLineOption("send-file", "发送二进制文件后退出", "FILE"));
     parser.addOption(QCommandLineOption("connect", "连接串口", "PORT"));
     parser.addOption(QCommandLineOption("baudrate", "--connect的波特率", "RATE", "115200"));
     parser.addOption(QCommandLineOption("get-logs", "获取最近N条日志", "COUNT"));
@@ -97,6 +99,7 @@ int CLIApp::run(int argc, char* argv[])
 
     bool needsIpc = parser.isSet("list") || parser.isSet("get-status") ||
                     parser.isSet("get-logs") || parser.isSet("send") ||
+                    parser.isSet("send-file") ||
                     parser.isSet("connect") || parser.isSet("cli") ||
                     !parser.value("p").isEmpty();
 
@@ -152,6 +155,26 @@ int CLIApp::run(int argc, char* argv[])
         QString reqId = nextReqId();
         addPending();
         ipc_->sendCommand("send_text", params, reqId);
+    }
+
+    else if (parser.isSet("send-file")) {
+        QString filePath = parser.value("send-file");
+        QFile file(filePath);
+        if (!file.open(QIODevice::ReadOnly)) {
+            QTextStream err(stderr);
+            err << "错误: 无法打开文件 " << filePath << Qt::endl;
+            return 3;
+        }
+        QByteArray binaryData = file.readAll();
+        file.close();
+        QJsonObject params;
+        params["data"] = QString::fromLatin1(binaryData.toBase64());
+        params["port"] = parser.value("p");
+        params["filename"] = QFileInfo(filePath).fileName();
+        params["size"] = binaryData.size();
+        QString reqId = nextReqId();
+        addPending();
+        ipc_->sendCommand("send_file", params, reqId);
     }
 
     else if (parser.isSet("connect")) {
@@ -295,6 +318,24 @@ void CLIApp::handleCommand(const QString& cmd)
         params["data"] = cmd.mid(8);
         ipc_->sendCommand("send_hex", params);
         out << COLOR_GREEN << ">>> HEX 发送: " << cmd.mid(8) << COLOR_RESET << Qt::endl;
+        return;
+    }
+    if (cmd.startsWith("sendfile ")) {
+        QString filePath = cmd.mid(9).trimmed();
+        QFile file(filePath);
+        if (!file.open(QIODevice::ReadOnly)) {
+            out << COLOR_RED << "[错误] 无法打开文件: " << filePath << COLOR_RESET << Qt::endl;
+            return;
+        }
+        QByteArray binaryData = file.readAll();
+        file.close();
+        QJsonObject params;
+        params["data"] = QString::fromLatin1(binaryData.toBase64());
+        params["filename"] = QFileInfo(filePath).fileName();
+        params["size"] = binaryData.size();
+        ipc_->sendCommand("send_file", params);
+        out << COLOR_GREEN << ">>> 发送文件: " << QFileInfo(filePath).fileName()
+            << " (" << binaryData.size() << " 字节)" << COLOR_RESET << Qt::endl;
         return;
     }
     if (cmd.startsWith("filter ")) {
@@ -472,6 +513,7 @@ void CLIApp::printHelp() const
     out << "数据发送:" << Qt::endl;
     out << "  send <data>            - 发送文本数据 (自动追加CRLF)" << Qt::endl;
     out << "  sendhex <hex>          - 发送HEX数据" << Qt::endl;
+    out << "  sendfile <file>        - 发送二进制文件" << Qt::endl;
     out << Qt::endl;
     out << "日志操作:" << Qt::endl;
     out << "  clear                  - 清空日志缓存" << Qt::endl;
@@ -508,6 +550,7 @@ void CLIApp::printUsage() const
     out << "  --connect PORT        连接指定串口, 可用 --baudrate 指定波特率" << Qt::endl;
     out << "  --baudrate RATE       配合 --connect 使用, 设置波特率 (默认: 115200)" << Qt::endl;
     out << "  --send DATA           发送文本数据 (自动追加CRLF), 完成后退出" << Qt::endl;
+    out << "  --send-file FILE      发送二进制文件 (Base64编码传输), 完成后退出" << Qt::endl;
     out << "  --list                列出可用串口设备" << Qt::endl;
     out << "  --get-status          显示当前连接状态" << Qt::endl;
     out << "  --get-logs N          获取最近N条日志" << Qt::endl;
@@ -522,6 +565,7 @@ void CLIApp::printUsage() const
     out << "  EmberInterDebugTool-cli -p COM3                           # 监听COM3日志" << Qt::endl;
     out << "  EmberInterDebugTool-cli -p COM3 --cli                     # 交互模式监听COM3" << Qt::endl;
     out << "  EmberInterDebugTool-cli --send \"AT+GMR\" -p COM3           # 发送命令并观察回复" << Qt::endl;
+    out << "  EmberInterDebugTool-cli --send-file firmware.bin -p COM3    # 发送二进制固件" << Qt::endl;
     out << "  EmberInterDebugTool-cli --get-logs 50                     # 获取最近50条日志" << Qt::endl;
     out << "  EmberInterDebugTool-cli -p COM3 -f ERROR                  # 只显示含ERROR的日志" << Qt::endl;
     out << "  EmberInterDebugTool-cli -p COM3 -o debug.log              # 监听并保存到文件" << Qt::endl;

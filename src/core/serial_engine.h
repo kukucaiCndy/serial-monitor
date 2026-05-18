@@ -29,6 +29,7 @@ public:
 
     qint64 sendText(const QString& data, const QString& append = "CRLF");
     qint64 sendHex(const QByteArray& data);
+    qint64 sendRaw(const QByteArray& data);
     void setAutoReconnect(bool enabled);
 
     QString portName() const;
