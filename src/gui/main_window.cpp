@@ -42,7 +42,7 @@ MainWindow::MainWindow(QWidget* parent)
     , rxBytes_(0)
     , txBytes_(0)
 {
-    setWindowTitle("EmberInterDebugTool v1.0.0 - 尘智 | 微尘藏星火,终端蕴尘智");
+    setWindowTitle("EmberInterDebugTool v" APP_VERSION " - 尘智 | 微尘藏星火,终端蕴尘智");
     setMinimumSize(900, 600);
 
     setupUi();
@@ -80,7 +80,7 @@ void MainWindow::onAbout()
         "赋能边缘嵌入式"
         "</p>"
         "<hr>"
-        "<p>版本: 1.0.0</p>"
+        "<p>版本: " APP_VERSION "</p>"
     );
     about.exec();
 }

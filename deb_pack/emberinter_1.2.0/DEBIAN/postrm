@@ -1,0 +1,6 @@
+#!/bin/bash
+rm -f /usr/local/bin/serial-monitor /usr/local/bin/emberinter-cli
+if [ -x /usr/bin/update-desktop-database ]; then
+    update-desktop-database -q /usr/share/applications
+fi
+exit 0

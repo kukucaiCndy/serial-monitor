@@ -1,0 +1,51 @@
+name: Build & Package
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake g++ \
+            qtbase5-dev libqt5serialport5-dev \
+            rapidjson-dev libspdlog-dev libfmt-dev
+
+      - name: Configure
+        run: |
+          mkdir build && cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel $(nproc)
+
+      - name: Build deb Package
+        run: bash deb_pack/build_deb.sh
+
+      - name: Upload Binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: serial-monitor-linux
+          path: |
+            build/bin/serial-monitor
+            build/bin/serial-monitor-cli
+
+      - name: Upload deb Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: emberinter-deb
+          path: release/emberinter_*.deb

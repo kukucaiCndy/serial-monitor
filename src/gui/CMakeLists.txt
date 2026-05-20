@@ -28,6 +28,10 @@ add_executable(serial-monitor
     ${CMAKE_SOURCE_DIR}/resources/icons/app.rc
 )
 
+target_compile_definitions(serial-monitor PRIVATE
+    APP_VERSION="${PROJECT_VERSION}"
+)
+
 target_include_directories(serial-monitor PRIVATE
     ${CMAKE_SOURCE_DIR}/src/core
     ${SPDLOG_INCLUDE_DIR}

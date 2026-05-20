@@ -1,0 +1,181 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake g++ \
+            qtbase5-dev libqt5serialport5-dev \
+            rapidjson-dev libspdlog-dev libfmt-dev
+
+      - name: Configure
+        run: |
+          mkdir build && cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel $(nproc)
+
+      - name: Build deb Package
+        run: bash deb_pack/build_deb.sh
+
+      - name: Upload deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: emberinter-linux-deb
+          path: release/emberinter_*.deb
+
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-qt5
+            mingw-w64-x86_64-rapidjson
+            mingw-w64-x86_64-spdlog
+            mingw-w64-x86_64-fmt
+
+      - name: Configure
+        run: |
+          mkdir -p build && cd build
+          cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH=/mingw64
+
+      - name: Build
+        run: cmake --build build --parallel 4
+
+      - name: Collect Qt DLLs
+        run: |
+          mkdir -p dist-win
+          cp build/bin/serial-monitor.exe dist-win/
+          cp build/bin/serial-monitor-cli.exe dist-win/
+          windeployqt dist-win/serial-monitor.exe --no-translations --no-compiler-runtime
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: emberinter-windows
+          path: dist-win/
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          brew install cmake qt@5 rapidjson spdlog fmt
+
+      - name: Configure
+        run: |
+          mkdir build && cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix qt@5)"
+
+      - name: Build
+        run: cmake --build build --parallel $(sysctl -n hw.logicalcpu)
+
+      - name: Package macOS Artifacts
+        run: |
+          mkdir -p dist-macos
+          cp build/bin/serial-monitor dist-macos/
+          cp build/bin/serial-monitor-cli dist-macos/
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: emberinter-macos
+          path: dist-macos/
+
+  release:
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Linux Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: emberinter-linux-deb
+          path: artifacts/linux
+
+      - name: Download Windows Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: emberinter-windows
+          path: artifacts/windows
+
+      - name: Download macOS Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: emberinter-macos
+          path: artifacts/macos
+
+      - name: Zip Windows Package
+        run: |
+          cd artifacts/windows
+          zip -r ../../emberinter-windows.zip .
+          cd ../..
+
+      - name: Tar macOS Package
+        run: |
+          cd artifacts/macos
+          tar -czf ../../emberinter-macos.tar.gz .
+          cd ../..
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: EmberInterDebugTool ${{ github.ref_name }}
+          body: |
+            ## EmberInter 尘智串口调试工具 ${{ github.ref_name }}
+
+            ### 下载
+
+            | 平台 | 文件 |
+            |------|------|
+            | 🐧 Linux (deb) | `emberinter_*.deb` |
+            | 🪟 Windows | `emberinter-windows.zip` |
+            | 🍎 macOS | `emberinter-macos.tar.gz` |
+
+            ### Linux 安装
+            ```bash
+            sudo dpkg -i emberinter_*.deb
+            sudo apt-get install -f
+            ```
+
+            ### 使用
+            ```bash
+            serial-monitor           # GUI 图形界面
+            emberinter-cli --help    # CLI 命令行工具
+            ```
+          files: |
+            artifacts/linux/emberinter_*.deb
+            emberinter-windows.zip
+            emberinter-macos.tar.gz
+          generate_release_notes: true

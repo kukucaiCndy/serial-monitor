@@ -21,6 +21,8 @@
 #define COLOR_CYAN    "\033[96m"
 #define COLOR_GRAY    "\033[90m"
 
+static inline QString Utf8(const char* s) { return QString::fromUtf8(s); }
+
 static void printColored(QTextStream& out, const QString& text, const QString& level)
 {
     QString color;
@@ -49,7 +51,8 @@ CLIApp::CLIApp(const QString& ipcName)
             this, &CLIApp::onResponseReceived);
     connect(ipc_, &IPCClient::errorOccurred, [](const QString& err) {
         QTextStream out(stdout);
-        out << COLOR_RED << "[ERROR] " << err << COLOR_RESET << Qt::endl;
+        out.setCodec("UTF-8");
+        out << COLOR_RED << Utf8("[ERROR] ") << err << COLOR_RESET << Qt::endl;
     });
 }
 
@@ -60,12 +63,12 @@ int CLIApp::run(int argc, char* argv[])
     QCoreApplication app(argc, argv);
     app_ = &app;
     app.setApplicationName("EmberInterDebugTool-cli");
-    app.setApplicationVersion("1.0.0");
+    app.setApplicationVersion(APP_VERSION);
 
     QCommandLineParser parser;
     parser.setApplicationDescription("EmberInterDebugTool - 尘智串口调试工具 CLI");
-    parser.addHelpOption();
-    parser.addVersionOption();
+    parser.addOption(QCommandLineOption(QStringList() << "h" << "help", "显示帮助信息"));
+    parser.addOption(QCommandLineOption(QStringList() << "v" << "version", "显示版本信息"));
 
     parser.addOption(QCommandLineOption("p", "串口名称", "PORT"));
     parser.addOption(QCommandLineOption("b", "波特率 (默认: 115200)", "RATE", "115200"));
@@ -89,6 +92,13 @@ int CLIApp::run(int argc, char* argv[])
     parser.process(app);
 
     if (parser.isSet("help") || parser.isSet("version")) {
+        QTextStream out(stdout);
+        out.setCodec("UTF-8");
+        if (parser.isSet("help")) {
+            out << parser.helpText() << Qt::endl;
+        } else {
+            out << app.applicationName() << " " << app.applicationVersion() << Qt::endl;
+        }
         return 0;
     }
 
@@ -113,8 +123,9 @@ int CLIApp::run(int argc, char* argv[])
 
     if (!ipc_->connectToServer(ipcName_)) {
         QTextStream err(stderr);
-        err << "错误: GUI 服务未运行 (IPC: " << ipcName_ << ")" << Qt::endl;
-        err << "请先启动 GUI 程序" << Qt::endl;
+        err.setCodec("UTF-8");
+        err << Utf8("错误: GUI 服务未运行 (IPC: ") << ipcName_ << ")" << Qt::endl;
+        err << Utf8("请先启动 GUI 程序") << Qt::endl;
         return 2;
     }
 
@@ -165,7 +176,8 @@ int CLIApp::run(int argc, char* argv[])
         QFile file(filePath);
         if (!file.open(QIODevice::ReadOnly)) {
             QTextStream err(stderr);
-            err << "错误: 无法打开文件 " << filePath << Qt::endl;
+            err.setCodec("UTF-8");
+            err << Utf8("错误: 无法打开文件 ") << filePath << Qt::endl;
             return 3;
         }
         QByteArray binaryData = file.readAll();
@@ -206,7 +218,8 @@ int CLIApp::run(int argc, char* argv[])
         QString port = parser.value("p");
         if (port.isEmpty()) {
             QTextStream out(stdout);
-            out << "错误: --cli 需要 --port 参数" << Qt::endl;
+            out.setCodec("UTF-8");
+            out << Utf8("错误: --cli 需要 --port 参数") << Qt::endl;
             return 1;
         }
         QTimer::singleShot(0, [this, port]() { runInteractive(port); });
@@ -217,12 +230,14 @@ int CLIApp::run(int argc, char* argv[])
         interactiveMode_ = true;
         QTimer::singleShot(0, [this]() {
             QTextStream out(stdout);
-            out << COLOR_GREEN << "[系统] 正在监听串口日志，按 Ctrl+C 停止。"
+            out.setCodec("UTF-8");
+            out << COLOR_GREEN << Utf8("[系统] 正在监听串口日志，按 Ctrl+C 停止。")
                 << COLOR_RESET << Qt::endl;
         });
         QObject::connect(&app, &QCoreApplication::aboutToQuit, [this]() {
             QTextStream out(stdout);
-            out << COLOR_GRAY << "[系统] CLI 已断开 (GUI 服务继续运行)"
+            out.setCodec("UTF-8");
+            out << COLOR_GRAY << Utf8("[系统] CLI 已断开 (GUI 服务继续运行)")
                 << COLOR_RESET << Qt::endl;
         });
         return app.exec();
@@ -260,12 +275,13 @@ int CLIApp::runInteractive(const QString& port)
     interactiveMode_ = true;
 
     QTextStream out(stdout);
+    out.setCodec("UTF-8");
     out << COLOR_CYAN << QString(60, '=') << COLOR_RESET << Qt::endl;
-    out << COLOR_CYAN << "  EmberInterDebugTool v1.0.0 - 尘智 | 微尘藏星火,终端蕴尘智" << COLOR_RESET << Qt::endl;
+    out << COLOR_CYAN << Utf8("  EmberInterDebugTool v" APP_VERSION " - 尘智 | 微尘藏星火,终端蕴尘智") << COLOR_RESET << Qt::endl;
     out << COLOR_GRAY << "  Port: " << port << COLOR_RESET << Qt::endl;
     out << COLOR_CYAN << QString(60, '=') << COLOR_RESET << Qt::endl;
     out << Qt::endl;
-    out << COLOR_GREEN << "[系统] 输入 'help' 查看命令, 'quit' 退出"
+    out << COLOR_GREEN << Utf8("[系统] 输入 'help' 查看命令, 'quit' 退出")
         << COLOR_RESET << Qt::endl << Qt::endl;
 
     QTextStream in(stdin);
@@ -285,6 +301,7 @@ int CLIApp::runInteractive(const QString& port)
 void CLIApp::handleCommand(const QString& cmd)
 {
     QTextStream out(stdout);
+    out.setCodec("UTF-8");
 
     if (cmd == "h" || cmd == "help" || cmd == "?") {
         printHelp();
@@ -292,7 +309,7 @@ void CLIApp::handleCommand(const QString& cmd)
     }
     if (cmd == "c" || cmd == "clear") {
         ipc_->sendCommand("clear_logs");
-        out << COLOR_GREEN << "[系统] 日志已清空" << COLOR_RESET << Qt::endl;
+        out << COLOR_GREEN << Utf8("[系统] 日志已清空") << COLOR_RESET << Qt::endl;
         return;
     }
     if (cmd == "s" || cmd == "status") {
@@ -305,18 +322,18 @@ void CLIApp::handleCommand(const QString& cmd)
     }
     if (cmd == "hex") {
         hexMode_ = true;
-        out << COLOR_GREEN << "[系统] HEX 模式已开启" << COLOR_RESET << Qt::endl;
+        out << COLOR_GREEN << Utf8("[系统] HEX 模式已开启") << COLOR_RESET << Qt::endl;
         return;
     }
     if (cmd == "text") {
         hexMode_ = false;
-        out << COLOR_GREEN << "[系统] 文本模式已开启" << COLOR_RESET << Qt::endl;
+        out << COLOR_GREEN << Utf8("[系统] 文本模式已开启") << COLOR_RESET << Qt::endl;
         return;
     }
     if (cmd == "ts" || cmd == "timestamp") {
         showTimestamp_ = !showTimestamp_;
-        out << COLOR_GREEN << "[系统] 时间戳: "
-            << (showTimestamp_ ? "开" : "关") << COLOR_RESET << Qt::endl;
+        out << COLOR_GREEN << Utf8("[系统] 时间戳: ")
+            << Utf8(showTimestamp_ ? "开" : "关") << COLOR_RESET << Qt::endl;
         return;
     }
     if (cmd.startsWith("send ")) {
@@ -324,21 +341,21 @@ void CLIApp::handleCommand(const QString& cmd)
         params["data"] = cmd.mid(5);
         params["append"] = "CRLF";
         ipc_->sendCommand("send_text", params);
-        out << COLOR_GREEN << ">>> 发送: " << cmd.mid(5) << COLOR_RESET << Qt::endl;
+        out << COLOR_GREEN << ">>> " << Utf8("发送: ") << cmd.mid(5) << COLOR_RESET << Qt::endl;
         return;
     }
     if (cmd.startsWith("sendhex ")) {
         QJsonObject params;
         params["data"] = cmd.mid(8);
         ipc_->sendCommand("send_hex", params);
-        out << COLOR_GREEN << ">>> HEX 发送: " << cmd.mid(8) << COLOR_RESET << Qt::endl;
+        out << COLOR_GREEN << ">>> HEX " << Utf8("发送: ") << cmd.mid(8) << COLOR_RESET << Qt::endl;
         return;
     }
     if (cmd.startsWith("sendfile ")) {
         QString filePath = cmd.mid(9).trimmed();
         QFile file(filePath);
         if (!file.open(QIODevice::ReadOnly)) {
-            out << COLOR_RED << "[错误] 无法打开文件: " << filePath << COLOR_RESET << Qt::endl;
+            out << COLOR_RED << Utf8("[错误] 无法打开文件: ") << filePath << COLOR_RESET << Qt::endl;
             return;
         }
         QByteArray binaryData = file.readAll();
@@ -348,8 +365,8 @@ void CLIApp::handleCommand(const QString& cmd)
         params["filename"] = QFileInfo(filePath).fileName();
         params["size"] = binaryData.size();
         ipc_->sendCommand("send_file", params);
-        out << COLOR_GREEN << ">>> 发送文件: " << QFileInfo(filePath).fileName()
-            << " (" << binaryData.size() << " 字节)" << COLOR_RESET << Qt::endl;
+        out << COLOR_GREEN << ">>> " << Utf8("发送文件: ") << QFileInfo(filePath).fileName()
+            << " (" << binaryData.size() << Utf8(" 字节)") << COLOR_RESET << Qt::endl;
         return;
     }
     if (cmd.startsWith("filter ")) {
@@ -358,8 +375,8 @@ void CLIApp::handleCommand(const QString& cmd)
         QJsonObject params;
         params["keyword"] = kw;
         ipc_->sendCommand("set_filter", params);
-        out << COLOR_GREEN << "[系统] 过滤: "
-            << (kw.isEmpty() ? "无" : kw) << COLOR_RESET << Qt::endl;
+        out << COLOR_GREEN << Utf8("[系统] 过滤: ")
+            << (kw.isEmpty() ? Utf8("无") : kw) << COLOR_RESET << Qt::endl;
         return;
     }
     if (cmd.startsWith("export ")) {
@@ -367,7 +384,7 @@ void CLIApp::handleCommand(const QString& cmd)
         params["file_path"] = cmd.mid(7).trimmed();
         params["format"] = "json";
         ipc_->sendCommand("export_logs", params);
-        out << COLOR_GREEN << "[系统] 正在导出..." << COLOR_RESET << Qt::endl;
+        out << COLOR_GREEN << Utf8("[系统] 正在导出...") << COLOR_RESET << Qt::endl;
         return;
     }
     if (cmd.startsWith("connect ")) {
@@ -380,7 +397,7 @@ void CLIApp::handleCommand(const QString& cmd)
     }
     if (cmd == "disconnect" || cmd == "disc") {
         ipc_->sendCommand("disconnect");
-        out << COLOR_GREEN << "[系统] 正在断开..." << COLOR_RESET << Qt::endl;
+        out << COLOR_GREEN << Utf8("[系统] 正在断开...") << COLOR_RESET << Qt::endl;
         return;
     }
 
@@ -388,12 +405,13 @@ void CLIApp::handleCommand(const QString& cmd)
     params["data"] = cmd;
     params["append"] = "CRLF";
     ipc_->sendCommand("send_text", params);
-    out << COLOR_GREEN << ">>> 发送: " << cmd << COLOR_RESET << Qt::endl;
+    out << COLOR_GREEN << ">>> " << Utf8("发送: ") << cmd << COLOR_RESET << Qt::endl;
 }
 
 void CLIApp::onLogReceived(const QJsonObject& log)
 {
     QTextStream out(stdout);
+    out.setCodec("UTF-8");
     QString text = log["text"].toString();
     QString level = log["level"].toString();
 
@@ -432,6 +450,7 @@ void CLIApp::onLogReceived(const QJsonObject& log)
 void CLIApp::onStatusChanged(const QJsonObject& status)
 {
     QTextStream out(stdout);
+    out.setCodec("UTF-8");
     QString port = status["port"].toString();
     bool connected = status["connected"].toBool();
 
@@ -441,8 +460,8 @@ void CLIApp::onStatusChanged(const QJsonObject& status)
         return;
     }
 
-    out << COLOR_GREEN << "[系统] " << port << " "
-        << (connected ? "已连接" : "已断开") << COLOR_RESET << Qt::endl;
+    out << COLOR_GREEN << Utf8("[系统] ") << port << " "
+        << Utf8(connected ? "已连接" : "已断开") << COLOR_RESET << Qt::endl;
 }
 
 void CLIApp::onResponseReceived(const QString& id, bool success, const QJsonObject& data)
@@ -451,11 +470,12 @@ void CLIApp::onResponseReceived(const QString& id, bool success, const QJsonObje
     donePending();
 
     QTextStream out(stdout);
+    out.setCodec("UTF-8");
 
     if (data.contains("ports")) {
         QJsonArray ports = data["ports"].toArray();
         if (ports.isEmpty()) {
-            out << COLOR_GRAY << "[系统] 未找到串口设备" << COLOR_RESET << Qt::endl;
+            out << COLOR_GRAY << Utf8("[系统] 未找到串口设备") << COLOR_RESET << Qt::endl;
         } else {
             for (const auto& val : ports) {
                 QJsonObject p = val.toObject();
@@ -474,8 +494,8 @@ void CLIApp::onResponseReceived(const QString& id, bool success, const QJsonObje
         int returned = data["returned_count"].toInt();
         QJsonArray entries = data["entries"].toArray();
 
-        out << COLOR_GRAY << "[系统] 日志缓冲区: " << total
-            << " 条, 显示 " << returned << COLOR_RESET << Qt::endl;
+        out << COLOR_GRAY << Utf8("[系统] 日志缓冲区: ") << total
+            << Utf8(" 条, 显示 ") << returned << COLOR_RESET << Qt::endl;
 
         for (const auto& val : entries) {
             QJsonObject entry = val.toObject();
@@ -496,9 +516,9 @@ void CLIApp::onResponseReceived(const QString& id, bool success, const QJsonObje
     }
 
     if (data.contains("port") && !data.contains("entries")) {
-        out << COLOR_GREEN << "[系统] 串口: " << data["port"].toString()
-            << " | 连接: " << (data["connected"].toBool() ? "是" : "否")
-            << " | 缓冲: " << data["buffer_size"].toInt()
+        out << COLOR_GREEN << Utf8("[系统] 串口: ") << data["port"].toString()
+            << Utf8(" | 连接: ") << Utf8(data["connected"].toBool() ? "是" : "否")
+            << Utf8(" | 缓冲: ") << data["buffer_size"].toInt()
             << " | RX: " << data["rx_bytes"].toDouble()
             << " | TX: " << data["tx_bytes"].toDouble()
             << COLOR_RESET << Qt::endl;
@@ -515,75 +535,75 @@ void CLIApp::printHelp() const
 {
     QTextStream out(stdout);
     out << Qt::endl;
-    out << "EmberInterDebugTool CLI v1.0.0" << Qt::endl;
+    out << "EmberInterDebugTool CLI v" APP_VERSION << Qt::endl;
     out << Qt::endl;
-    out << "会话管理:" << Qt::endl;
-    out << "  connect <port> [baud] - 连接串口" << Qt::endl;
-    out << "  disconnect             - 断开当前串口" << Qt::endl;
-    out << "  disc                   - 断开当前串口 (简写)" << Qt::endl;
-    out << "  status                 - 显示连接状态" << Qt::endl;
-    out << "  list                   - 列出可用串口" << Qt::endl;
+    out << Utf8("会话管理:") << Qt::endl;
+    out << Utf8("  connect <port> [baud] - 连接串口") << Qt::endl;
+    out << Utf8("  disconnect             - 断开当前串口") << Qt::endl;
+    out << Utf8("  disc                   - 断开当前串口 (简写)") << Qt::endl;
+    out << Utf8("  status                 - 显示连接状态") << Qt::endl;
+    out << Utf8("  list                   - 列出可用串口") << Qt::endl;
     out << Qt::endl;
-    out << "数据发送:" << Qt::endl;
-    out << "  send <data>            - 发送文本数据 (自动追加CRLF)" << Qt::endl;
-    out << "  sendhex <hex>          - 发送HEX数据" << Qt::endl;
-    out << "  sendfile <file>        - 发送二进制文件" << Qt::endl;
+    out << Utf8("数据发送:") << Qt::endl;
+    out << Utf8("  send <data>            - 发送文本数据 (自动追加CRLF)") << Qt::endl;
+    out << Utf8("  sendhex <hex>          - 发送HEX数据") << Qt::endl;
+    out << Utf8("  sendfile <file>        - 发送二进制文件") << Qt::endl;
     out << Qt::endl;
-    out << "日志操作:" << Qt::endl;
-    out << "  clear                  - 清空日志缓存" << Qt::endl;
-    out << "  filter <keyword>       - 设置过滤关键词 (空=取消过滤)" << Qt::endl;
-    out << "  hex / text             - 切换 HEX/文本 显示模式" << Qt::endl;
-    out << "  timestamp / ts         - 切换时间戳显示" << Qt::endl;
-    out << "  export <file>          - 导出日志为JSON文件" << Qt::endl;
+    out << Utf8("日志操作:") << Qt::endl;
+    out << Utf8("  clear                  - 清空日志缓存") << Qt::endl;
+    out << Utf8("  filter <keyword>       - 设置过滤关键词 (空=取消过滤)") << Qt::endl;
+    out << Utf8("  hex / text             - 切换 HEX/文本 显示模式") << Qt::endl;
+    out << Utf8("  timestamp / ts         - 切换时间戳显示") << Qt::endl;
+    out << Utf8("  export <file>          - 导出日志为JSON文件") << Qt::endl;
     out << Qt::endl;
-    out << "其他:" << Qt::endl;
-    out << "  help / ?               - 显示此帮助" << Qt::endl;
-    out << "  quit / q / exit        - 退出CLI (GUI继续运行)" << Qt::endl;
+    out << Utf8("其他:") << Qt::endl;
+    out << Utf8("  help / ?               - 显示此帮助") << Qt::endl;
+    out << Utf8("  quit / q / exit        - 退出CLI (GUI继续运行)") << Qt::endl;
     out << Qt::endl;
-    out << "提示: 未识别的命令将作为文本数据发送到串口" << Qt::endl;
+    out << Utf8("提示: 未识别的命令将作为文本数据发送到串口") << Qt::endl;
     out << Qt::endl;
 }
 
 void CLIApp::printUsage() const
 {
     QTextStream out(stdout);
-    out << "EmberInterDebugTool v1.0.0 - 尘智 | 微尘藏星火,终端蕴尘智" << Qt::endl << Qt::endl;
-    out << "用法: EmberInterDebugTool-cli [选项]" << Qt::endl << Qt::endl;
-    out << "监听模式 (需先启动GUI):" << Qt::endl;
-    out << "  -p, --port PORT       指定串口, 实时接收日志 (需先通过GUI连接该串口)" << Qt::endl;
-    out << "  --cli                 交互CLI模式, 需配合 -p PORT 使用" << Qt::endl;
-    out << "  -f, --filter KW       过滤关键词, 只显示包含关键词的日志" << Qt::endl;
-    out << "  -o, --output FILE     同时保存日志到文件" << Qt::endl;
-    out << "  --hex                 HEX显示模式" << Qt::endl;
-    out << "  --no-timestamp        不显示时间戳" << Qt::endl;
-    out << "  --json                JSON输出模式" << Qt::endl;
-    out << "  --clear               启动时清空GUI日志缓冲" << Qt::endl;
-    out << "  --ipc NAME            IPC服务名称 (默认: serial_monitor_ipc)" << Qt::endl;
+    out << QString::fromUtf8("EmberInterDebugTool v" APP_VERSION " - 尘智 | 微尘藏星火,终端蕴尘智") << Qt::endl << Qt::endl;
+    out << Utf8("用法: EmberInterDebugTool-cli [选项]") << Qt::endl << Qt::endl;
+    out << Utf8("监听模式 (需先启动GUI):") << Qt::endl;
+    out << Utf8("  -p, --port PORT       指定串口, 实时接收日志 (需先通过GUI连接该串口)") << Qt::endl;
+    out << Utf8("  --cli                 交互CLI模式, 需配合 -p PORT 使用") << Qt::endl;
+    out << Utf8("  -f, --filter KW       过滤关键词, 只显示包含关键词的日志") << Qt::endl;
+    out << Utf8("  -o, --output FILE     同时保存日志到文件") << Qt::endl;
+    out << Utf8("  --hex                 HEX显示模式") << Qt::endl;
+    out << Utf8("  --no-timestamp        不显示时间戳") << Qt::endl;
+    out << Utf8("  --json                JSON输出模式") << Qt::endl;
+    out << Utf8("  --clear               启动时清空GUI日志缓冲") << Qt::endl;
+    out << Utf8("  --ipc NAME            IPC服务名称 (默认: serial_monitor_ipc)") << Qt::endl;
     out << Qt::endl;
-    out << "操作命令 (需先启动GUI):" << Qt::endl;
-    out << "  --connect PORT        连接指定串口, 可用 --baudrate 指定波特率" << Qt::endl;
-    out << "  --baudrate RATE       配合 --connect 使用, 设置波特率 (默认: 115200)" << Qt::endl;
-    out << "  --send DATA           发送文本数据 (自动追加CRLF), 完成后退出" << Qt::endl;
-    out << "  --send-hex HEX        发送HEX数据, 完成后退出" << Qt::endl;
-    out << "  --send-file FILE      发送二进制文件 (Base64编码传输), 完成后退出" << Qt::endl;
-    out << "  --list                列出可用串口设备" << Qt::endl;
-    out << "  --get-status          显示当前连接状态" << Qt::endl;
-    out << "  --get-logs N          获取最近N条日志" << Qt::endl;
+    out << Utf8("操作命令 (需先启动GUI):") << Qt::endl;
+    out << Utf8("  --connect PORT        连接指定串口, 可用 --baudrate 指定波特率") << Qt::endl;
+    out << Utf8("  --baudrate RATE       配合 --connect 使用, 设置波特率 (默认: 115200)") << Qt::endl;
+    out << Utf8("  --send DATA           发送文本数据 (自动追加CRLF), 完成后退出") << Qt::endl;
+    out << Utf8("  --send-hex HEX        发送HEX数据, 完成后退出") << Qt::endl;
+    out << Utf8("  --send-file FILE      发送二进制文件 (Base64编码传输), 完成后退出") << Qt::endl;
+    out << Utf8("  --list                列出可用串口设备") << Qt::endl;
+    out << Utf8("  --get-status          显示当前连接状态") << Qt::endl;
+    out << Utf8("  --get-logs N          获取最近N条日志") << Qt::endl;
     out << Qt::endl;
-    out << "帮助:" << Qt::endl;
-    out << "  -h, --help            显示此帮助信息" << Qt::endl;
-    out << "  -v, --version         显示版本信息" << Qt::endl;
+    out << Utf8("帮助:") << Qt::endl;
+    out << Utf8("  -h, --help            显示此帮助信息") << Qt::endl;
+    out << Utf8("  -v, --version         显示版本信息") << Qt::endl;
     out << Qt::endl;
-    out << "示例:" << Qt::endl;
-    out << "  EmberInterDebugTool-cli --list                            # 列出所有串口" << Qt::endl;
-    out << "  EmberInterDebugTool-cli --connect COM3 --baudrate 9600    # 连接COM3" << Qt::endl;
-    out << "  EmberInterDebugTool-cli -p COM3                           # 监听COM3日志" << Qt::endl;
-    out << "  EmberInterDebugTool-cli -p COM3 --cli                     # 交互模式监听COM3" << Qt::endl;
-    out << "  EmberInterDebugTool-cli --send \"AT+GMR\" -p COM3           # 发送命令并观察回复" << Qt::endl;
-    out << "  EmberInterDebugTool-cli --send-hex \"FF AB 03\" -p COM3      # 发送HEX字节" << Qt::endl;
-    out << "  EmberInterDebugTool-cli --send-file firmware.bin -p COM3    # 发送二进制固件" << Qt::endl;
-    out << "  EmberInterDebugTool-cli --get-logs 50                     # 获取最近50条日志" << Qt::endl;
-    out << "  EmberInterDebugTool-cli -p COM3 -f ERROR                  # 只显示含ERROR的日志" << Qt::endl;
-    out << "  EmberInterDebugTool-cli -p COM3 -o debug.log              # 监听并保存到文件" << Qt::endl;
-    out << "  EmberInterDebugTool-cli --get-status                      # 查看连接状态" << Qt::endl;
+    out << Utf8("示例:") << Qt::endl;
+    out << Utf8("  EmberInterDebugTool-cli --list                            # 列出所有串口") << Qt::endl;
+    out << Utf8("  EmberInterDebugTool-cli --connect COM3 --baudrate 9600    # 连接COM3") << Qt::endl;
+    out << Utf8("  EmberInterDebugTool-cli -p COM3                           # 监听COM3日志") << Qt::endl;
+    out << Utf8("  EmberInterDebugTool-cli -p COM3 --cli                     # 交互模式监听COM3") << Qt::endl;
+    out << Utf8("  EmberInterDebugTool-cli --send \"AT+GMR\" -p COM3           # 发送命令并观察回复") << Qt::endl;
+    out << Utf8("  EmberInterDebugTool-cli --send-hex \"FF AB 03\" -p COM3      # 发送HEX字节") << Qt::endl;
+    out << Utf8("  EmberInterDebugTool-cli --send-file firmware.bin -p COM3    # 发送二进制固件") << Qt::endl;
+    out << Utf8("  EmberInterDebugTool-cli --get-logs 50                     # 获取最近50条日志") << Qt::endl;
+    out << Utf8("  EmberInterDebugTool-cli -p COM3 -f ERROR                  # 只显示含ERROR的日志") << Qt::endl;
+    out << Utf8("  EmberInterDebugTool-cli -p COM3 -o debug.log              # 监听并保存到文件") << Qt::endl;
+    out << Utf8("  EmberInterDebugTool-cli --get-status                      # 查看连接状态") << Qt::endl;
 }

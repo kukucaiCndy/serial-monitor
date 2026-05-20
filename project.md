@@ -112,14 +112,14 @@ cd deploy
 | 权限要求 | 管理员 |
 | 快捷方式 | 桌面 + 开始菜单（各含 GUI 和 CLI 入口） |
 | 压缩 | LZMA 固实压缩 |
-| 输出 | `dist/emberInter-Setup-1.0.0.exe` (~30MB) |
+| 输出 | `release/emberInter-Setup-1.0.0.exe` (~30MB) |
 
 ### 3. 发布到 GitHub
 
 #### 方式一：GitHub CLI (gh)
 
 ```bash
-gh release create v1.0.0 dist/emberInter-Setup-1.0.0.exe \
+gh release create v1.0.0 release/emberInter-Setup-1.0.0.exe \
   --title "v1.0.0 - EmberInterDebugTool" \
   --notes "Release v1.0.0"
 ```
@@ -143,7 +143,7 @@ curl -X POST \
 curl -X POST \
   -H "Authorization: token $TOKEN" \
   -H "Content-Type: application/vnd.microsoft.portable-executable" \
-  --data-binary @dist/emberInter-Setup-1.0.0.exe \
+  --data-binary @release/emberInter-Setup-1.0.0.exe \
   "https://uploads.github.com/repos/kukucaiCndy/serial-monitor/releases/{RELEASE_ID}/assets?name=emberInter-Setup-1.0.0.exe"
 ```
 

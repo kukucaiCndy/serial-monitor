@@ -14,6 +14,10 @@ add_executable(serial-monitor-cli
     ${CLI_HEADERS}
 )
 
+target_compile_definitions(serial-monitor-cli PRIVATE
+    APP_VERSION="${PROJECT_VERSION}"
+)
+
 target_include_directories(serial-monitor-cli PRIVATE
     ${CMAKE_SOURCE_DIR}/src/core
     ${RAPIDJSON_INCLUDE_DIR}

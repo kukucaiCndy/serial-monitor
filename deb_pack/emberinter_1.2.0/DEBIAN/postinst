@@ -1,0 +1,13 @@
+#!/bin/bash
+if [ -x /usr/bin/update-desktop-database ]; then
+    update-desktop-database -q /usr/share/applications
+fi
+if [ -x /usr/bin/gtk-update-icon-cache ]; then
+    gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor
+fi
+ln -sf /opt/emberinter/bin/serial-monitor /usr/local/bin/serial-monitor
+ln -sf /opt/emberinter/bin/serial-monitor-cli /usr/local/bin/emberinter-cli
+echo "EmberInter 尘智串口调试工具已安装成功！"
+echo "  GUI: 从应用菜单启动 'EmberInter'，或运行 serial-monitor"
+echo "  CLI: 运行 emberinter-cli"
+exit 0

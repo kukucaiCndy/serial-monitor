@@ -1,0 +1,19 @@
+Package: emberinter
+Version: 1.2.0
+Section: electronics
+Priority: optional
+Architecture: amd64
+Maintainer: kukucaiCndy <kukucaiCndy@github.com>
+Depends: libqt5widgets5 (>= 5.15), libqt5serialport5 (>= 5.15), libqt5network5 (>= 5.15), libqt5gui5 (>= 5.15), libqt5core5a (>= 5.15), libfmt10 (>= 10), libc6 (>= 2.34), libstdc++6 (>= 12)
+Description: EmberInter Debug Tool - 尘智串口调试工具
+ EmberInter 是一款面向嵌入式开发者的跨平台串口监控调试工具。
+ 同时支持 CLI 命令行模式（供 AI Agent/脚本使用）和 GUI 图形界面模式（供开发者使用）。
+ 功能特性：
+  - 串口自动检测与连接
+  - 彩色日志显示（自动识别 ERROR/WARN/INFO/DEBUG/TRACE 级别）
+  - HEX 十六进制显示模式与混合模式
+  - 多串口标签页同时监控
+  - 数据发送（文本/HEX/循环发送）
+  - 日志筛选过滤与 JSON 格式导出
+  - 配置持久化
+  - 暗色主题支持

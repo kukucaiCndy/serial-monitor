@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=EmberInter
+Name[zh_CN]=尘智串口调试工具
+Comment=Cross-platform Serial Monitor Debug Tool
+Comment[zh_CN]=跨平台串口监控调试工具
+Exec=/opt/emberinter/bin/serial-monitor
+Icon=emberinter
+Terminal=false
+Type=Application
+Categories=Development;Debugger;Electronics;
+Keywords=serial;debug;embedded;monitor;串口;调试;嵌入式;
+StartupNotify=true

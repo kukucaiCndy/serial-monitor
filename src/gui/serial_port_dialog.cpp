@@ -36,7 +36,10 @@ void SerialPortDialog::setupUi()
 
     baudCombo_ = new QComboBox(this);
     baudCombo_->setEditable(true);
-    baudCombo_->addItems({"115200", "921600", "460800", "230400", "57600", "38400", "19200", "9600"});
+    baudCombo_->addItems({"3000000", "2500000", "2000000", "1500000", "1000000",
+                          "921600", "460800", "256000", "230400", "128000",
+                          "115200", "76800", "57600", "38400", "31250",
+                          "28800", "19200", "14400", "9600"});
     baudCombo_->setCurrentText("115200");
     form->addRow("波特率", baudCombo_);
 

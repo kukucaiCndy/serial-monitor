@@ -22,7 +22,7 @@ int main(int argc, char* argv[])
 
     QApplication app(argc, argv);
     app.setApplicationName("EmberInterDebugTool");
-    app.setApplicationVersion("1.0.0");
+    app.setApplicationVersion(APP_VERSION);
     app.setOrganizationName("EmberInter");
     app.setWindowIcon(QIcon(":/icons/logo.png"));
 
