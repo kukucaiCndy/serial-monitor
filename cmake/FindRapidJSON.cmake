@@ -3,6 +3,7 @@ find_path(RAPIDJSON_INCLUDE_DIR rapidjson/rapidjson.h
     ${CMAKE_SOURCE_DIR}/third_party/rapidjson/include
     /usr/include
     /usr/local/include
+    /opt/homebrew/include
     /mingw64/include
 )
 
